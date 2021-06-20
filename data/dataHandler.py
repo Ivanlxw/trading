@@ -306,10 +306,8 @@ class TDAData(HistoricCSVDataHandler):
         self.frequency = frequency
         self.live = live
         if not self.live:
-            self._get_price_history(self.period_type, self.period, self.frequency_type, self.frequency)
+            self._set_symbol_data(self.period_type, self.period, self.frequency_type, self.frequency, self.start_date)
             self._to_generator()
-        else:
-            pass
         
         self.continue_backtest = True
     
@@ -319,28 +317,43 @@ class TDAData(HistoricCSVDataHandler):
             self.period_type, self.period, self.frequency_type, self.frequency, self.live
         )
 
-    def _get_price_history(self, period_type, period, frequency_type, frequency):
-        ## put in Data class in future
-        assert frequency_type in ["minute", "daily", "weekly", "monthly"]
-        assert frequency in [1, 5, 10, 15, 30]
-        sym_to_remove = []
-        comb_index = None
-        for sym in self.symbol_list:
-            res = requests.get(
-                f"https://api.tdameritrade.com/v1/marketdata/{sym}/pricehistory",
+    def _get_quote(self, ticker):
+        res = requests.get(
+                f"https://api.tdameritrade.com/v1/marketdata/{ticker}/quotes",
+                params={
+                    "apikey": self.consumer_key,
+                },
+        )
+        if res.ok:
+            print(res.json())
+
+    def _get_price_history(self, ticker, period_type, period, frequency_type, frequency, start_date):
+        res = requests.get(
+                f"https://api.tdameritrade.com/v1/marketdata/{ticker}/pricehistory",
                 params={
                     "apikey": self.consumer_key,
                     "periodType": period_type,
                     "period": period,
                     "frequencyType": frequency_type,
                     "frequency": frequency,
-                    "startDate": self.start_date
+                    "startDate": start_date
                 },
             )
-            if res.ok:
-                data = dict(res.json())
-                if not data["empty"]:
-                    temp = pd.DataFrame(data["candles"]) 
+        if res.ok:
+            return res.json()
+        return None
+
+    def _set_symbol_data(self, period_type, period, frequency_type, frequency, start_date) -> None:
+        ## put in Data class in future
+        assert frequency_type in ["minute", "daily", "weekly", "monthly"]
+        assert frequency in [1, 5, 10, 15, 30]
+        sym_to_remove = []
+        comb_index = None
+        for sym in self.symbol_list:
+            price_history = self._get_price_history(sym, period_type, period, frequency_type, frequency, start_date)
+            if price_history is not None:
+                if not price_history["empty"]:
+                    temp = pd.DataFrame(price_history["candles"]) 
                     temp = temp.set_index('datetime')
                     temp.index = temp.index.map(lambda x: datetime.datetime.fromtimestamp(x/1000).strftime("%Y-%m-%d"))
                     self.symbol_data[sym] = temp
@@ -353,10 +366,33 @@ class TDAData(HistoricCSVDataHandler):
                     
                     self.latest_symbol_data[sym] = []
             else:
-                logging.info(f"Removing {sym}: {res.json()}")
+                logging.info(f"Removing {sym}")
                 sym_to_remove.append(sym)
         self.symbol_list = [sym for sym in self.symbol_list if sym not in sym_to_remove]
-        logging.info(f"Final symbol list: {self.symbol_list}")
         for sym in self.symbol_list:
             self.symbol_data[sym] = self.symbol_data[sym].reindex(index=comb_index, method='pad',fill_value=0)
             self.symbol_data[sym].index = self.symbol_data[sym].index.map(lambda x: datetime.datetime.strptime(x, "%Y-%m-%d"))
+    
+    def update_bars(self):
+        if not self.live:
+            super().update_bars()
+            if self.start_date > pd.Timestamp.today(tz=NY):
+                self.continue_backtest = False
+            return
+        else:
+            ## get past 100 days and set as self.symbol_data
+            self._set_symbol_data(
+                    self.period_type, self.period, 
+                    self.frequency_type, self.frequency, 
+                    start_date= int((pd.Timestamp.now(tz=NY) - pd.DateOffset(days=100)).timestamp()) * 1000
+            )
+
+            for sym in self.symbol_data:
+                self.latest_symbol_data[sym] = [{
+                    "datetime": obs.index,
+                    "open": obs[1].get("open"),
+                    "high": obs[1].get("high"),
+                    "low": obs[1].get("low"),
+                    "close": obs[1].get("close")
+                } for obs in self.symbol_data[sym].iterrows()]
+        self.events.put(MarketEvent())
