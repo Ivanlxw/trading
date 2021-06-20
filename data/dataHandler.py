@@ -298,7 +298,6 @@ class TDAData(HistoricCSVDataHandler):
         self.events = events
         self.symbol_list = symbol_list
         self.consumer_key = os.environ["TDD_consumer_key"]
-        self.raw_data =  {}
         self.symbol_data = {}
         self.latest_symbol_data = {}
         self.data_fields = ['symbol', 'datetime', 'open', 'high', 'low', 'close', 'volume']
@@ -342,19 +341,20 @@ class TDAData(HistoricCSVDataHandler):
                     temp = pd.DataFrame(data["candles"]) 
                     temp = temp.set_index('datetime')
                     temp.index = temp.index.map(lambda x: datetime.datetime.fromtimestamp(x/1000).strftime('%Y-%m-%d'))
-                    self.raw_data[sym] = temp
+                    self.symbol_data[sym] = temp
 
                     ## combine index to pad forward values
                     if comb_index is None:
-                        comb_index = self.raw_data[sym].index
+                        comb_index = self.symbol_data[sym].index
                     else: 
-                        comb_index.union(self.raw_data[sym].index.drop_duplicates())
+                        comb_index.union(self.symbol_data[sym].index.drop_duplicates())
                     
                     self.latest_symbol_data[sym] = []
             else:
+                logging.info(f"Removing {sym}: {res.json()}")
                 sym_to_remove.append(sym)
         self.symbol_list = [sym for sym in self.symbol_list if sym not in sym_to_remove]
         logging.info(f"Final symbol list: {self.symbol_list}")
         for sym in self.symbol_list:
-            self.raw_data[sym] = self.raw_data[sym].reindex(index=comb_index, method='pad',fill_value=0)
-            self.raw_data[sym].index = self.raw_data[sym].index.map(lambda x: datetime.datetime.strptime(x, '%Y-%m-%d'))
+            self.symbol_data[sym] = self.symbol_data[sym].reindex(index=comb_index, method='pad',fill_value=0)
+            self.symbol_data[sym].index = self.symbol_data[sym].index.map(lambda x: datetime.datetime.strptime(x, '%Y-%m-%d'))
