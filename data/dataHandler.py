@@ -104,7 +104,7 @@ class HistoricCSVDataHandler(DataHandler, ABC):
                 try:
                     res_data = pd.DataFrame(res_data.json())
                 except Exception:
-                    logging.exception(res_data)
+                    logging.exception(res_data.content)
                 res_data.set_index('date', inplace=True)
                 res_data.index = res_data.index.map(lambda x: x.replace("T00:00:00.000Z", ""))
                 res_data.to_csv(os.path.join(self.csv_dir, f"{sym}.csv"))
