@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from backtest.portfolio.portfolio import Portfolio
-from backtest.data.dataHandler import DataHandler
+from trading_common.data.dataHandler import DataHandler
 
 class Plot:
     def __init__(self, port:Portfolio) -> None:
