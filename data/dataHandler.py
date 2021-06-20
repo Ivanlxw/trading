@@ -40,7 +40,7 @@ class DataHandler(ABC):
         raise NotImplementedError("Should implement update_bars()")
 
 
-class HistoricCSVDataHandler(DataHandler):
+class HistoricCSVDataHandler(DataHandler, ABC):
     """
     read CSV files from local filepath and prove inferface to
     obtain "latest" bar similar to live trading (drip feed)
@@ -63,7 +63,6 @@ class HistoricCSVDataHandler(DataHandler):
         else:
             self.end_date = None
         self.symbol_data = {}
-        self.raw_data = {}
         self.latest_symbol_data = {}
         self.continue_backtest = True
         self.fundamental_data = None
@@ -127,22 +126,23 @@ class HistoricCSVDataHandler(DataHandler):
             if self.end_date is not None and self.end_date in temp.index:
                 filtered = filtered.iloc[:temp.index.get_loc(self.end_date),]
     
-            self.raw_data[s] = filtered
+            self.symbol_data[s] = filtered
 
             ## combine index to pad forward values
             if comb_index is None:
-                comb_index = self.raw_data[s].index
+                comb_index = self.symbol_data[s].index
             else: 
-                comb_index.union(self.raw_data[s].index.drop_duplicates())
+                comb_index.union(self.symbol_data[s].index.drop_duplicates())
             
             self.latest_symbol_data[s] = []
         ## reindex
         for s in self.symbol_list:
-            self.raw_data[s] = self.raw_data[s].reindex(index=comb_index, method='pad',fill_value=0)
-            self.raw_data[s].index = self.raw_data[s].index.map(lambda x: datetime.datetime.strptime(x, '%Y-%m-%d'))
+            self.symbol_data[s] = self.symbol_data[s].reindex(index=comb_index, method='pad',fill_value=0)
+            self.symbol_data[s].index = self.symbol_data[s].index.map(lambda x: datetime.datetime.strptime(x, '%Y-%m-%d'))
+
     def _to_generator(self):
         for s in self.symbol_list:
-            self.symbol_data[s] = self.raw_data[s].iterrows()
+            self.symbol_data[s] = self.symbol_data[s].iterrows()
         
     def _get_new_bar(self, symbol):
         """
@@ -160,9 +160,6 @@ class HistoricCSVDataHandler(DataHandler):
                 'close': b[1][3],
                 'volume' : b[1][4]
             }
-
-    def get_raw_data(self, symbol):
-        return self.raw_data[symbol]
 
     def get_latest_bars(self, symbol, N=1):
         if symbol in self.latest_symbol_data:
@@ -227,7 +224,7 @@ class AlpacaData(HistoricCSVDataHandler):
 
     def get_backtest_bars(self):
         start = self.start_date
-        ## generate self.raw_data as dict(data)
+        ## generate self.symbol_data as dict(data)
         to_remove = []
         for s in self.symbol_list:
             df = self.api.get_barset(s, '1D', 
@@ -289,7 +286,9 @@ class AlpacaData(HistoricCSVDataHandler):
         self.events.put(MarketEvent())
 
 class TDAData(HistoricCSVDataHandler):
-    def __init__(self, events, symbol_list, start_date:str, period_type="year", period=1, frequency_type="daily", frequency=1) -> None:
+    def __init__(self, events, symbol_list, start_date:str, 
+                period_type="year", period=1, 
+                frequency_type="daily", frequency=1, live=True) -> None:
         if type(start_date) != str and re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start_date):
             raise Exception("Start date has to be string and following format: YYYY-MM-DD")
         ## convert to epoch in millisecond
@@ -305,16 +304,19 @@ class TDAData(HistoricCSVDataHandler):
         self.period = period
         self.frequency_type = frequency_type
         self.frequency = frequency
-        self._get_price_history(self.period_type, self.period, self.frequency_type, self.frequency)
-        self._to_generator()
-        del self.raw_data
+        self.live = live
+        if not self.live:
+            self._get_price_history(self.period_type, self.period, self.frequency_type, self.frequency)
+            self._to_generator()
+        else:
+            pass
         
         self.continue_backtest = True
     
     def __copy__(self):
         return TDAData(
-            self.events, self.symbol_list, self.start_date, 
-            self.period_type, self.period, self.frequency_type, self.frequency
+            self.events, self.symbol_list, datetime.datetime.fromtimestamp(self.start_date/1000).strftime('%Y-%m-%d'), 
+            self.period_type, self.period, self.frequency_type, self.frequency, self.live
         )
 
     def _get_price_history(self, period_type, period, frequency_type, frequency):
@@ -340,7 +342,7 @@ class TDAData(HistoricCSVDataHandler):
                 if not data["empty"]:
                     temp = pd.DataFrame(data["candles"]) 
                     temp = temp.set_index('datetime')
-                    temp.index = temp.index.map(lambda x: datetime.datetime.fromtimestamp(x/1000).strftime('%Y-%m-%d'))
+                    temp.index = temp.index.map(lambda x: datetime.datetime.fromtimestamp(x/1000).strftime("%Y-%m-%d"))
                     self.symbol_data[sym] = temp
 
                     ## combine index to pad forward values
@@ -357,4 +359,4 @@ class TDAData(HistoricCSVDataHandler):
         logging.info(f"Final symbol list: {self.symbol_list}")
         for sym in self.symbol_list:
             self.symbol_data[sym] = self.symbol_data[sym].reindex(index=comb_index, method='pad',fill_value=0)
-            self.symbol_data[sym].index = self.symbol_data[sym].index.map(lambda x: datetime.datetime.strptime(x, '%Y-%m-%d'))
+            self.symbol_data[sym].index = self.symbol_data[sym].index.map(lambda x: datetime.datetime.strptime(x, "%Y-%m-%d"))
