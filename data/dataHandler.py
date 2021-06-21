@@ -11,8 +11,10 @@ from trading_common.event import MarketEvent
 
 NY = 'America/New_York'
 
-def get_tiingo_endpoint(endpoint:str, args:str):
+
+def get_tiingo_endpoint(endpoint: str, args: str):
     return f"https://api.tiingo.com/tiingo/{endpoint}?{args}&token={os.environ['TIINGO_API']}"
+
 
 class DataHandler(ABC):
     """
@@ -46,15 +48,15 @@ class HistoricCSVDataHandler(DataHandler, ABC):
     obtain "latest" bar similar to live trading (drip feed)
     """
 
-    def __init__(self, events, csv_dir, symbol_list, start_date, 
-        end_date=None, fundamental:bool=False):
+    def __init__(self, events, csv_dir, symbol_list, start_date,
+                 end_date=None, fundamental: bool = False):
         """
         Args:
         - Event Queue on which to push MarketEvent information to
         - absolute path of the CSV files 
         - a list of symbols determining universal stocks
         """
-        self.events = events ## a queue
+        self.events = events  # a queue
         self.csv_dir = csv_dir
         self.symbol_list = symbol_list
         self.start_date = start_date
@@ -66,7 +68,8 @@ class HistoricCSVDataHandler(DataHandler, ABC):
         self.latest_symbol_data = {}
         self.continue_backtest = True
         self.fundamental_data = None
-        self.data_fields = ['symbol', 'datetime', 'open', 'high', 'low', 'close', 'volume']
+        self.data_fields = ['symbol', 'datetime',
+                            'open', 'high', 'low', 'close', 'volume']
         self.fundamental = fundamental
         if self.fundamental:
             self._obtain_fundamental_data()
@@ -74,18 +77,19 @@ class HistoricCSVDataHandler(DataHandler, ABC):
         self._download_files()
         self._open_convert_csv_files()
         self._to_generator()
-    
+
     def __copy__(self):
         return HistoricCSVDataHandler(
-            self.events, self.csv_dir, self.symbol_list, 
+            self.events, self.csv_dir, self.symbol_list,
             self.start_date, self.end_date, self.fundamental
         )
-    
+
     def _obtain_fundamental_data(self):
         self.fundamental_data = {}
         for sym in self.symbol_list:
             url = f"https://api.tiingo.com/tiingo/fundamentals/{sym}/statements?startDate={self.start_date}&token={os.environ['TIINGO_API']}"
-            self.fundamental_data[sym] = requests.get(url, headers={ 'Content-Type': 'application/json' }).json()
+            self.fundamental_data[sym] = requests.get(
+                url, headers={'Content-Type': 'application/json'}).json()
 
     def _download_files(self, ):
         dne = []
@@ -93,7 +97,7 @@ class HistoricCSVDataHandler(DataHandler, ABC):
             os.makedirs(self.csv_dir)
         for sym in self.symbol_list:
             if not os.path.exists(os.path.join(self.csv_dir, f"{sym}.csv")):
-                ## api call
+                # api call
                 res_data = requests.get(get_tiingo_endpoint(f'daily/{sym}/prices', 'startDate=2000-1-1'), headers={
                     'Content-Type': 'application/json'
                 })
@@ -106,7 +110,8 @@ class HistoricCSVDataHandler(DataHandler, ABC):
                 except Exception:
                     logging.exception(res_data.content)
                 res_data.set_index('date', inplace=True)
-                res_data.index = res_data.index.map(lambda x: x.replace("T00:00:00.000Z", ""))
+                res_data.index = res_data.index.map(
+                    lambda x: x.replace("T00:00:00.000Z", ""))
                 res_data.to_csv(os.path.join(self.csv_dir, f"{sym}.csv"))
         self.symbol_list = [sym for sym in self.symbol_list if sym not in dne]
 
@@ -115,50 +120,52 @@ class HistoricCSVDataHandler(DataHandler, ABC):
         for s in self.symbol_list:
             temp = pd.read_csv(
                 os.path.join(self.csv_dir, f"{s}.csv"),
-                header = 0, index_col= 0,
+                header=0, index_col=0,
             ).drop_duplicates()
             temp = temp.loc[:, ["open", "high", "low", "close", "volume"]]
             if self.start_date in temp.index:
-                filtered = temp.iloc[temp.index.get_loc(self.start_date):,]
+                filtered = temp.iloc[temp.index.get_loc(self.start_date):, ]
             else:
                 filtered = temp
-            
+
             if self.end_date is not None and self.end_date in temp.index:
-                filtered = filtered.iloc[:temp.index.get_loc(self.end_date),]
-    
+                filtered = filtered.iloc[:temp.index.get_loc(self.end_date), ]
+
             self.symbol_data[s] = filtered
 
-            ## combine index to pad forward values
+            # combine index to pad forward values
             if comb_index is None:
                 comb_index = self.symbol_data[s].index
-            else: 
+            else:
                 comb_index.union(self.symbol_data[s].index.drop_duplicates())
-            
+
             self.latest_symbol_data[s] = []
-        ## reindex
+        # reindex
         for s in self.symbol_list:
-            self.symbol_data[s] = self.symbol_data[s].reindex(index=comb_index, method='pad',fill_value=0)
-            self.symbol_data[s].index = self.symbol_data[s].index.map(lambda x: datetime.datetime.strptime(x, '%Y-%m-%d'))
+            self.symbol_data[s] = self.symbol_data[s].reindex(
+                index=comb_index, method='pad', fill_value=0)
+            self.symbol_data[s].index = self.symbol_data[s].index.map(
+                lambda x: datetime.datetime.strptime(x, '%Y-%m-%d'))
 
     def _to_generator(self):
         for s in self.symbol_list:
             self.symbol_data[s] = self.symbol_data[s].iterrows()
-        
+
     def _get_new_bar(self, symbol):
         """
         Returns latest bar from data feed as tuple of
         (symbol, datetime, open, high, low, close, volume)
         """
         for b in self.symbol_data[symbol]:
-            ## need to change strptime format depending on format of datatime in csv
+            # need to change strptime format depending on format of datatime in csv
             yield {
                 'symbol': symbol,
                 'datetime': b[0],
-                'open' : b[1][0],
-                'high' : b[1][1],
-                'low' : b[1][2],
+                'open': b[1][0],
+                'high': b[1][1],
+                'low': b[1][2],
                 'close': b[1][3],
-                'volume' : b[1][4]
+                'volume': b[1][4]
             }
 
     def get_latest_bars(self, symbol, N=1):
@@ -170,25 +177,27 @@ class HistoricCSVDataHandler(DataHandler, ABC):
             bar['symbol'] = symbol
             return bar
         logging.error("Symbol is not available in historical data set.")
-    
+
     def update_bars(self):
         for s in self.symbol_list:
             try:
                 bar = next(self._get_new_bar(s))
             except StopIteration:
                 self.continue_backtest = False
-            else: 
+            else:
                 if bar is not None:
                     self.latest_symbol_data[s].append(bar)
         self.events.put(MarketEvent())
 
+
 class AlpacaData(HistoricCSVDataHandler):
-    def __init__(self, events, symbol_list, timeframe='1D', live=True, start_date: pd.Timestamp=None):
+    def __init__(self, events, symbol_list, timeframe='1D', live=True, start_date: pd.Timestamp = None):
         self.events = events
         self.symbol_list = symbol_list
         assert timeframe in ['1Min', '5Min', '15Min', 'day', '1D']
         self.timeframe = timeframe
-        self.data_fields = ['symbol', 'datetime', 'open', 'high', 'low', 'close', 'volume']
+        self.data_fields = ['symbol', 'datetime',
+                            'open', 'high', 'low', 'close', 'volume']
 
         if not start_date and not live:
             raise Exception("If not live, start_date has to be defined")
@@ -198,12 +207,12 @@ class AlpacaData(HistoricCSVDataHandler):
         self.start_date = pd.Timestamp.now(tz=NY)
         self.continue_backtest = True
 
-        ## connect to Alpaca to call their symbols
+        # connect to Alpaca to call their symbols
         self.base_url = "https://paper-api.alpaca.markets"
-        self.data_url = "https://data.alpaca.markets/v2" 
+        self.data_url = "https://data.alpaca.markets/v2"
         self.api = alpaca_trade_api.REST(
-            os.environ["alpaca_key_id"], 
-            os.environ["alpaca_secret_key"], 
+            os.environ["alpaca_key_id"],
+            os.environ["alpaca_secret_key"],
             self.base_url, api_version="v2"
         )
 
@@ -215,22 +224,22 @@ class AlpacaData(HistoricCSVDataHandler):
             self.latest_symbol_data = dict((s, []) for s in self.symbol_list)
             self.get_backtest_bars()
             self._to_generator()
-    
+
     def __copy__(self):
         return AlpacaData(
-            self.events, self.symbol_list, self.timeframe, 
+            self.events, self.symbol_list, self.timeframe,
             self.live, self.start_date_str
         )
 
     def get_backtest_bars(self):
         start = self.start_date
-        ## generate self.symbol_data as dict(data)
+        # generate self.symbol_data as dict(data)
         to_remove = []
         for s in self.symbol_list:
-            df = self.api.get_barset(s, '1D', 
-                limit=1000,
-                start=start.isoformat(),
-            ).df
+            df = self.api.get_barset(s, '1D',
+                                     limit=1000,
+                                     start=start.isoformat(),
+                                     ).df
             if df.shape[0] == 0:
                 to_remove.append(s)
                 continue
@@ -242,18 +251,18 @@ class AlpacaData(HistoricCSVDataHandler):
             self.symbol_data[s] = self.symbol_data[s].iterrows()
 
     def get_latest_bars(self, symbol, N=1):
-        ## will return none if empty.
+        # will return none if empty.
         if self.live:
-            return self._conform_data_dict(self.api.get_barset(symbol, '1D', 
-                limit=N+5
-            ).df.iloc[-N:,:].to_dict(), symbol)
+            return self._conform_data_dict(self.api.get_barset(symbol, '1D',
+                                                               limit=N+5
+                                                               ).df.iloc[-N:, :].to_dict(), symbol)
         else:
             return super().get_latest_bars(symbol, N)
-    
+
     def get_all_assets(self):
         return self.api.list_assets(status='active')
-    
-    def _conform_data_dict(self, data: dict, symbol:str):
+
+    def _conform_data_dict(self, data: dict, symbol: str):
         bar = {}
         bar['symbol'] = symbol
         bar['datetime'] = list(data[(f'{symbol}', 'open')].keys())
@@ -264,15 +273,15 @@ class AlpacaData(HistoricCSVDataHandler):
         bar['low'] = list(data[(f'{symbol}', 'low')].values())
         bar['close'] = list(data[(f'{symbol}', 'close')].values())
         return bar
-    
-    def get_historical_bars(self, ticker, start, end, limit:int = None) -> pd.DataFrame:
+
+    def get_historical_bars(self, ticker, start, end, limit: int = None) -> pd.DataFrame:
         if limit is not None:
             return self.api.get_barset(ticker, self.timeframe, start=start, end=end, limit=limit).df
         return self.api.get_barset(ticker, self.timeframe, start=start, end=end).df.to_dict()
-   
+
     def get_last_quote(self, ticker):
         return self.api.get_last_quote(ticker)
-    
+
     def get_last_price(self, ticker):
         return self.api.get_last_trade(ticker).price
 
@@ -285,94 +294,106 @@ class AlpacaData(HistoricCSVDataHandler):
             return
         self.events.put(MarketEvent())
 
+
 class TDAData(HistoricCSVDataHandler):
-    def __init__(self, events, symbol_list, start_date:str, 
-                period_type="year", period=1, 
-                frequency_type="daily", frequency=1, live=True) -> None:
+    def __init__(self, events, symbol_list, start_date: str,
+                 period_type="year", period=1,
+                 frequency_type="daily", frequency=1, live=True) -> None:
         if type(start_date) != str and re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start_date):
-            raise Exception("Start date has to be string and following format: YYYY-MM-DD")
-        ## convert to epoch in millisecond
-        self.start_date = int(datetime.datetime.strptime(start_date, "%Y-%m-%d").timestamp() * 1000)
-        
+            raise Exception(
+                "Start date has to be string and following format: YYYY-MM-DD")
+        # convert to epoch in millisecond
+        self.start_date = int(datetime.datetime.strptime(
+            start_date, "%Y-%m-%d").timestamp() * 1000)
+
         self.events = events
         self.symbol_list = symbol_list
         self.consumer_key = os.environ["TDD_consumer_key"]
         self.symbol_data = {}
         self.latest_symbol_data = {}
-        self.data_fields = ['symbol', 'datetime', 'open', 'high', 'low', 'close', 'volume']
+        self.data_fields = ['symbol', 'datetime',
+                            'open', 'high', 'low', 'close', 'volume']
         self.period_type = period_type
         self.period = period
         self.frequency_type = frequency_type
         self.frequency = frequency
         self.live = live
         if not self.live:
-            self._set_symbol_data(self.period_type, self.period, self.frequency_type, self.frequency, self.start_date)
+            self._set_symbol_data(self.period_type, self.period,
+                                  self.frequency_type, self.frequency, self.start_date)
             self._to_generator()
-        
+
         self.continue_backtest = True
-    
+
     def __copy__(self):
         return TDAData(
-            self.events, self.symbol_list, datetime.datetime.fromtimestamp(self.start_date/1000).strftime('%Y-%m-%d'), 
+            self.events, self.symbol_list, datetime.datetime.fromtimestamp(
+                self.start_date/1000).strftime('%Y-%m-%d'),
             self.period_type, self.period, self.frequency_type, self.frequency, self.live
         )
 
     def _get_quote(self, ticker):
         res = requests.get(
-                f"https://api.tdameritrade.com/v1/marketdata/{ticker}/quotes",
-                params={
-                    "apikey": self.consumer_key,
-                },
+            f"https://api.tdameritrade.com/v1/marketdata/{ticker}/quotes",
+            params={
+                "apikey": self.consumer_key,
+            },
         )
         if res.ok:
             print(res.json())
 
     def _get_price_history(self, ticker, period_type, period, frequency_type, frequency, start_date):
         res = requests.get(
-                f"https://api.tdameritrade.com/v1/marketdata/{ticker}/pricehistory",
-                params={
-                    "apikey": self.consumer_key,
-                    "periodType": period_type,
-                    "period": period,
-                    "frequencyType": frequency_type,
-                    "frequency": frequency,
-                    "startDate": start_date
-                },
-            )
+            f"https://api.tdameritrade.com/v1/marketdata/{ticker}/pricehistory",
+            params={
+                "apikey": self.consumer_key,
+                "periodType": period_type,
+                "period": period,
+                "frequencyType": frequency_type,
+                "frequency": frequency,
+                "startDate": start_date
+            },
+        )
         if res.ok:
             return res.json()
         return None
 
     def _set_symbol_data(self, period_type, period, frequency_type, frequency, start_date) -> None:
-        ## put in Data class in future
+        # put in Data class in future
         assert frequency_type in ["minute", "daily", "weekly", "monthly"]
         assert frequency in [1, 5, 10, 15, 30]
         sym_to_remove = []
         comb_index = None
         for sym in self.symbol_list:
-            price_history = self._get_price_history(sym, period_type, period, frequency_type, frequency, start_date)
+            price_history = self._get_price_history(
+                sym, period_type, period, frequency_type, frequency, start_date)
             if price_history is not None:
                 if not price_history["empty"]:
-                    temp = pd.DataFrame(price_history["candles"]) 
+                    temp = pd.DataFrame(price_history["candles"])
                     temp = temp.set_index('datetime')
-                    temp.index = temp.index.map(lambda x: datetime.datetime.fromtimestamp(x/1000).strftime("%Y-%m-%d"))
+                    temp.index = temp.index.map(
+                        lambda x: datetime.datetime.fromtimestamp(x/1000).strftime("%Y-%m-%d"))
                     self.symbol_data[sym] = temp
 
-                    ## combine index to pad forward values
+                    # combine index to pad forward values
                     if comb_index is None:
                         comb_index = self.symbol_data[sym].index
-                    else: 
-                        comb_index.union(self.symbol_data[sym].index.drop_duplicates())
-                    
+                    else:
+                        comb_index.union(
+                            self.symbol_data[sym].index.drop_duplicates())
+
                     self.latest_symbol_data[sym] = []
             else:
                 logging.info(f"Removing {sym}")
                 sym_to_remove.append(sym)
-        self.symbol_list = [sym for sym in self.symbol_list if sym not in sym_to_remove]
+        self.symbol_list = [
+            sym for sym in self.symbol_list if sym not in sym_to_remove]
         for sym in self.symbol_list:
-            self.symbol_data[sym] = self.symbol_data[sym].reindex(index=comb_index, method='pad',fill_value=0)
-            self.symbol_data[sym].index = self.symbol_data[sym].index.map(lambda x: datetime.datetime.strptime(x, "%Y-%m-%d"))
-    
+            self.symbol_data[sym] = self.symbol_data[sym].reindex(
+                index=comb_index, method='pad', fill_value=0)
+            self.symbol_data[sym].index = self.symbol_data[sym].index.map(
+                lambda x: datetime.datetime.strptime(x, "%Y-%m-%d"))
+
     def update_bars(self):
         if not self.live:
             super().update_bars()
@@ -380,19 +401,21 @@ class TDAData(HistoricCSVDataHandler):
                 self.continue_backtest = False
             return
         else:
-            ## get past 100 days and set as self.symbol_data
+            # get past 100 days and set as self.symbol_data
             self._set_symbol_data(
-                    self.period_type, self.period, 
-                    self.frequency_type, self.frequency, 
-                    start_date= int((pd.Timestamp.now(tz=NY) - pd.DateOffset(days=100)).timestamp()) * 1000
+                self.period_type, self.period,
+                self.frequency_type, self.frequency,
+                start_date=int((pd.Timestamp.now(tz=NY) -
+                               pd.DateOffset(days=100)).timestamp()) * 1000
             )
 
             for sym in self.symbol_data:
                 self.latest_symbol_data[sym] = [{
-                    "datetime": obs.index,
+                    "datetime": obs[0],
                     "open": obs[1].get("open"),
                     "high": obs[1].get("high"),
                     "low": obs[1].get("low"),
-                    "close": obs[1].get("close")
+                    "close": obs[1].get("close"),
+                    "volume": obs[1].get("volume")
                 } for obs in self.symbol_data[sym].iterrows()]
         self.events.put(MarketEvent())

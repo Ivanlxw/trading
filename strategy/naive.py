@@ -32,7 +32,7 @@ class Strategy(object):
 
     def put_to_queue_(self, sym, datetime, order_position, price):
         self.events.put(SignalEvent(sym, datetime, order_position, price))
-    
+
     def calculate_signals(self, event) -> list:
         '''
           Returns list(SignalEvents)
@@ -45,5 +45,5 @@ class Strategy(object):
 
     @abstractmethod
     def _calculate_signal(self, signal) -> SignalEvent:
-        raise NotImplementedError("Need to implement underlying strategy logic:")
-
+        raise NotImplementedError(
+            "Need to implement underlying strategy logic:")

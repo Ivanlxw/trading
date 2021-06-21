@@ -174,9 +174,14 @@ class BoundedTA(_TA, Strategy):
         ta_values = self._get_ta_vals(bars)
         if ta_values[-1] < self.floor and min(ta_values) == ta_values[-1] and np.average(ta_values[-self.period:]) > ta_values[-1] + 7:
             # and np.corrcoef(np.arange(1, self.ta_period+self.period+1), bars['close'])[1][0] > 0:
-            return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])
+            return SignalEvent(bars['symbol'], bars['datetime'][-1],
+                               OrderPosition.BUY, bars['close'][-1],
+                               f"{self.ta_indicator} Value: {ta_values[-1]}"
+                               )
         elif ta_values[-1] > self.ceiling and max(ta_values) == ta_values[-1]:
-            return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])
+            return SignalEvent(bars['symbol'], bars['datetime'][-1],
+                               OrderPosition.SELL, bars['close'][-1],
+                               f"{self.ta_indicator} Value: {ta_values[-1]}")
 
 
 class ExtremaTA(_TA, Strategy):
@@ -200,9 +205,15 @@ class ExtremaTA(_TA, Strategy):
             self.max_consecutive += 1
             if self.max_consecutive == self.consecutive:
                 self.max_consecutive = 0
-                return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])
+                return SignalEvent(bars['symbol'], bars['datetime'][-1],
+                                   OrderPosition.BUY, bars['close'][-1],
+                                   f"{self.ta_indicator.__name__} Value: {ta_values[-1]}\nExtreme_period: {self.extrema_period}"
+                                   )
         elif ta_values[-1] == max(ta_values):
             self.min_consecutive += 1
             if self.min_consecutive == self.consecutive:
                 self.min_consecutive = 0
-                return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])
+                return SignalEvent(bars['symbol'], bars['datetime'][-1],
+                                   OrderPosition.SELL, bars['close'][-1],
+                                   f"{self.ta_indicator.__name__} Value: {ta_values[-1]}\nExtreme_period: {self.extrema_period}"
+                                   )

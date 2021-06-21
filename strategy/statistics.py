@@ -30,6 +30,22 @@ class RelativeExtrema(Strategy):
         #         OrderPosition.SELL, bars['close'][-1])
 
 
+class ExtremaBounce(Strategy):
+    def __init__(self, bars, short_period: int, long_period: int) -> None:
+        self.bars = bars
+        self.short_period = short_period
+        self.long_period = long_period
+
+    def _calculate_signal(self, ticker) -> SignalEvent:
+        bars_list = self.bars.get_latest_bars(ticker, N=self.long_period)
+        if len(bars_list["datetime"]) < self.long_period:
+            return
+        if bars_list["close"][-1] < np.percentile(bars_list["close"], 25) and bars_list["close"][-1] == max(bars_list["close"][-self.short_period:]):
+            return SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1])
+        elif bars_list["close"][-1] > np.percentile(bars_list["close"], 75) and bars_list["close"][-1] == min(bars_list["close"][-self.short_period:]):
+            return SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1])
+
+
 class BuyDips(Strategy):
     def __init__(self, bars, events, short_time, long_time, consecutive=2) -> None:
         self.bars = bars
