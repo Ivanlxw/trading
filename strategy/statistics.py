@@ -24,10 +24,10 @@ class RelativeExtrema(Strategy):
             return SignalEvent(
                 bars['symbol'], bars['datetime'][-1],
                 OrderPosition.BUY, bars['close'][-1])
-        # elif bars["close"][-1] == max(bars["close"]):
-        #     return SignalEvent(
-        #         bars['symbol'], bars['datetime'][-1],
-        #         OrderPosition.SELL, bars['close'][-1])
+        elif bars["close"][-1] == max(bars["close"]):
+            return SignalEvent(
+                bars['symbol'], bars['datetime'][-1],
+                OrderPosition.SELL, bars['close'][-1])
 
 
 class ExtremaBounce(Strategy):
@@ -46,41 +46,15 @@ class ExtremaBounce(Strategy):
             return SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1])
 
 
-class BuyDips(Strategy):
-    def __init__(self, bars, events, short_time, long_time, consecutive=2) -> None:
-        self.bars = bars
-        self.events = events
-        self.st = short_time
-        self.lt = long_time
-        self.consecutive = consecutive
-        self.counter = 0
+class LongTermCorrTrend(Strategy):
+    def __init__(self, bars, events, period):
+        super().__init__(bars, events)
+        self.period = period
 
-    def calculate_position(self, bars) -> OrderPosition:
-        assert len(bars) == self.lt
-        lt_corr = np.corrcoef(np.arange(1, self.lt+1), bars)
-        if np.percentile(bars[-self.st:], 5) > bars[-1] and lt_corr[0][1] > 0.25:
-            return OrderPosition.BUY
-        elif np.percentile(bars[-self.st:], 95) < bars[-1] and lt_corr[0][1] < 0:
-            return OrderPosition.SELL
-        elif np.percentile(bars, 97) < bars[-1]:
-            return OrderPosition.EXIT_LONG
-        elif np.percentile(bars, 3) > bars[-1]:
-            return OrderPosition.EXIT_SHORT
-
-    def _calculate_signal(self, symbol) -> SignalEvent:
-        bars = self.bars.get_latest_bars(symbol, N=self.lt)
-        if len(bars['datetime']) != self.lt:
-            return
-        psignals = self.calculate_position(bars['close'])
-        if psignals is not None:
-            return SignalEvent(
-                bars['symbol'], bars['datetime'][-1],
-                psignals, bars['close'][-1])
-
-
-class DipswithTA(BuyDips):
-    def __init__(self, bars, events, short_time, long_time, consecutive) -> None:
-        super().__init__(bars, events, short_time, long_time, consecutive=consecutive)
+    def _calculate_signal(self, ticker) -> SignalEvent:
+        bars_list = self.bars.get_latest_bars(ticker, N=self.period)
+        if np.correlate(np.arange(1, self.period+1), bars_list["close"])[0] > 0.8:
+            return SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1])
 
 
 class StatisticalStrategy(Strategy, metaclass=ABCMeta):
@@ -104,10 +78,9 @@ class StatisticalStrategy(Strategy, metaclass=ABCMeta):
         raise NotImplementedError(
             "Optimize() must be implemented in derived class")
 
-# Sklearn regressor (combined)
-
 
 class RawRegression(StatisticalStrategy):
+    # Sklearn regressor (combined)
     def __init__(self, bars, events, model, processor, reoptimize_days: int):
         StatisticalStrategy.__init__(self, bars, events, model, processor)
         self.model = {}
@@ -164,8 +137,8 @@ class RawRegression(StatisticalStrategy):
                                OrderPosition.SELL, bars['close'][-1])
 
 
-# Sklearn classifier (combined)
 class RawClassification(RawRegression):
+    # Sklearn classifier (combined)
     def __init__(self, bars, events, clf, processor, reoptimize_days):
         RawRegression.__init__(self, bars, events, clf,
                                processor, reoptimize_days)

@@ -44,6 +44,6 @@ class Strategy(object):
         return signals
 
     @abstractmethod
-    def _calculate_signal(self, signal) -> SignalEvent:
+    def _calculate_signal(self, ticker) -> SignalEvent:
         raise NotImplementedError(
             "Need to implement underlying strategy logic:")
