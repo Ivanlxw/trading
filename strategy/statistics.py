@@ -47,14 +47,25 @@ class ExtremaBounce(Strategy):
 
 
 class LongTermCorrTrend(Strategy):
-    def __init__(self, bars, events, period):
+    def __init__(self, bars, events, period, strat_contrarian: bool = True):
         super().__init__(bars, events)
         self.period = period
+        self.contrarian = strat_contrarian
 
     def _calculate_signal(self, ticker) -> SignalEvent:
         bars_list = self.bars.get_latest_bars(ticker, N=self.period)
         if np.correlate(np.arange(1, self.period+1), bars_list["close"])[0] > 0.8:
-            return SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1])
+            if self.contrarian:
+                order_posn = OrderPosition.SELL
+            else:
+                order_posn = OrderPosition.BUY
+            return SignalEvent(ticker, bars_list["datetime"][-1], order_posn, bars_list["close"][-1])
+        elif np.correlate(np.arange(1, self.period+1), bars_list["close"])[0] < -0.3:
+            if self.contrarian:
+                order_posn = OrderPosition.BUY
+            else:
+                order_posn = OrderPosition.SELL
+            return SignalEvent(ticker, bars_list["datetime"][-1], order_posn, bars_list["close"][-1])
 
 
 class StatisticalStrategy(Strategy, metaclass=ABCMeta):
@@ -94,7 +105,7 @@ class RawRegression(StatisticalStrategy):
         '''
         We have unique models for each symbol and fit each one of them. Not ideal for large stocklist
         '''
-        ## data is dict
+        # data is dict
         for sym in self.bars.symbol_list:
             bars = self.bars.get_latest_bars(sym, N=self.reoptimize_days)
             data = pd.DataFrame.from_dict(bars)

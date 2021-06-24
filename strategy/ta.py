@@ -186,7 +186,7 @@ class BoundedTA(_TA, Strategy):
 
 class ExtremaTA(_TA, Strategy):
     def __init__(self, bars, events, ta_indicator, ta_period, ta_indicator_type: TAIndicatorType,
-                 extrema_period: int, consecutive: int = 1):
+                 extrema_period: int, strat_contrarian: bool = True, consecutive: int = 1):
         super().__init__(
             bars, ta_indicator, ta_period, ta_indicator_type)
         self.events = events
@@ -194,6 +194,7 @@ class ExtremaTA(_TA, Strategy):
         self.consecutive = consecutive
         self.max_consecutive = 0
         self.min_consecutive = 0
+        self.contrarian = strat_contrarian
 
     def _calculate_signal(self, symbol) -> SignalEvent:
         bars = self.bars.get_latest_bars(
@@ -205,15 +206,23 @@ class ExtremaTA(_TA, Strategy):
             self.max_consecutive += 1
             if self.max_consecutive == self.consecutive:
                 self.max_consecutive = 0
+                if self.contrarian:
+                    order_position = OrderPosition.BUY
+                else:
+                    order_position = OrderPosition.SELL
                 return SignalEvent(bars['symbol'], bars['datetime'][-1],
-                                   OrderPosition.BUY, bars['close'][-1],
+                                   order_position, bars['close'][-1],
                                    f"{self.ta_indicator.__name__} Value: {ta_values[-1]}\nExtreme_period: {self.extrema_period}"
                                    )
         elif ta_values[-1] == max(ta_values):
             self.min_consecutive += 1
             if self.min_consecutive == self.consecutive:
                 self.min_consecutive = 0
+                if self.contrarian:
+                    order_position = OrderPosition.SELL
+                else:
+                    order_position = OrderPosition.BUY
                 return SignalEvent(bars['symbol'], bars['datetime'][-1],
-                                   OrderPosition.SELL, bars['close'][-1],
+                                   order_position, bars['close'][-1],
                                    f"{self.ta_indicator.__name__} Value: {ta_values[-1]}\nExtreme_period: {self.extrema_period}"
                                    )
