@@ -10,8 +10,7 @@ from trading.utilities.enum import OrderPosition
 
 class RelativeExtrema(Strategy):
     def __init__(self, bars, events, long_time, consecutive=2) -> None:
-        self.bars = bars
-        self.events = events
+        super().__init__(bars, events)
         self.lt = long_time
         self.consecutive = consecutive
         self.counter = 0
@@ -31,8 +30,8 @@ class RelativeExtrema(Strategy):
 
 
 class ExtremaBounce(Strategy):
-    def __init__(self, bars, short_period: int, long_period: int) -> None:
-        self.bars = bars
+    def __init__(self, bars, events, short_period: int, long_period: int) -> None:
+        super().__init__(bars, events)
         self.short_period = short_period
         self.long_period = long_period
 
@@ -60,7 +59,7 @@ class LongTermCorrTrend(Strategy):
             else:
                 order_posn = OrderPosition.BUY
             return SignalEvent(ticker, bars_list["datetime"][-1], order_posn, bars_list["close"][-1])
-        elif np.correlate(np.arange(1, self.period+1), bars_list["close"])[0] < -0.3:
+        elif np.correlate(np.arange(1, self.period+1), bars_list["close"])[0] < 0:
             if self.contrarian:
                 order_posn = OrderPosition.BUY
             else:
