@@ -1,6 +1,6 @@
 from abc import ABC
-from trading_common.strategy.naive import Strategy
-from trading_common.utilities.enum import OrderPosition
+from trading.strategy.naive import Strategy
+from trading.utilities.enum import OrderPosition
 
 
 class MultipleStrategy(ABC):

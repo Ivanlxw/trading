@@ -7,7 +7,7 @@ import pandas as pd
 from abc import ABC, abstractmethod
 import alpaca_trade_api
 
-from trading_common.event import MarketEvent
+from trading.event import MarketEvent
 
 NY = 'America/New_York'
 

@@ -6,8 +6,8 @@ import math
 import random
 
 from backtest.portfolio.portfolio import Portfolio
-from trading_common.data.dataHandler import DataHandler
-from trading_common.utilities.enum import OrderPosition
+from trading.data.dataHandler import DataHandler
+from trading.utilities.enum import OrderPosition
 
 
 class Plot:

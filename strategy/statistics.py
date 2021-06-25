@@ -3,9 +3,9 @@ import logging
 
 import numpy as np
 import pandas as pd
-from trading_common.event import SignalEvent
-from trading_common.strategy.naive import Strategy
-from trading_common.utilities.enum import OrderPosition
+from trading.event import SignalEvent
+from trading.strategy.naive import Strategy
+from trading.utilities.enum import OrderPosition
 
 
 class RelativeExtrema(Strategy):

@@ -1,4 +1,4 @@
-from trading_common.utilities.enum import OrderPosition, OrderType
+from trading.utilities.enum import OrderPosition, OrderType
 
 
 class Event(object):
