@@ -23,8 +23,8 @@ class MultipleAllStrategy(MultipleStrategy, Strategy):
                 strategies: list[OrderPosition] = []
                 for strategy in self.strategies:
                     strategies.append(strategy._calculate_signal(s))
-        if (self.order_same_dir(strategies)):
-            signals.append(strategies[0])
+                if (self.order_same_dir(strategies)):
+                    signals.append(strategies[0])
         return signals
 
 
@@ -41,7 +41,7 @@ class MultipleAnyStrategy(MultipleStrategy, Strategy):
                     strategies.append(strategy._calculate_signal(s))
                 if (any(strat is not None for strat in strategies)):
                     filtered_strat = [
-                        strat for strat in strategy if strat is not None]
+                        strat for strat in strategies if strat is not None]
                     for strat in filtered_strat:
                         if (self.order_same_dir(filtered_strat)):
                             signals.append(strat)
