@@ -172,16 +172,16 @@ class BoundedTA(_TA, Strategy):
         if len(bars['datetime']) < self.ta_period+self.period:
             return
         ta_values = self._get_ta_vals(bars)
-        if ta_values[-1] < self.floor and min(ta_values) == ta_values[-1] and np.average(ta_values[-self.period:]) > ta_values[-1] + 7:
+        if ta_values[-1] < self.floor and np.average(ta_values[-self.period:]) > ta_values[-1]:
             # and np.corrcoef(np.arange(1, self.ta_period+self.period+1), bars['close'])[1][0] > 0:
             return SignalEvent(bars['symbol'], bars['datetime'][-1],
                                OrderPosition.BUY, bars['close'][-1],
-                               f"{self.ta_indicator} Value: {ta_values[-1]}"
+                               f"{self.ta_indicator.__name__} Value: {ta_values[-1]}"
                                )
-        elif ta_values[-1] > self.ceiling and max(ta_values) == ta_values[-1]:
+        elif ta_values[-1] > self.ceiling and np.average(ta_values[-self.period:]) < ta_values[-1]:
             return SignalEvent(bars['symbol'], bars['datetime'][-1],
                                OrderPosition.SELL, bars['close'][-1],
-                               f"{self.ta_indicator} Value: {ta_values[-1]}")
+                               f"{self.ta_indicator.__name__} Value: {ta_values[-1]}")
 
 
 class ExtremaTA(_TA, Strategy):

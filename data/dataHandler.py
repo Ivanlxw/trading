@@ -9,7 +9,6 @@ import alpaca_trade_api
 
 from trading.event import MarketEvent
 from pathos.pools import ProcessPool
-from multiprocessing import Pool
 
 NY = 'America/New_York'
 
