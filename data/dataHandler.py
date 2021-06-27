@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 import alpaca_trade_api
 
 from trading.event import MarketEvent
+from pathos.pools import ProcessPool
+from multiprocessing import Pool
 
 NY = 'America/New_York'
 
@@ -117,29 +119,31 @@ class HistoricCSVDataHandler(DataHandler, ABC):
 
     def _open_convert_csv_files(self):
         comb_index = None
-        for s in self.symbol_list:
-            temp = pd.read_csv(
-                os.path.join(self.csv_dir, f"{s}.csv"),
-                header=0, index_col=0,
-            ).drop_duplicates()
-            temp = temp.loc[:, ["open", "high", "low", "close", "volume"]]
-            if self.start_date in temp.index:
-                filtered = temp.iloc[temp.index.get_loc(self.start_date):, ]
+        with ProcessPool(6) as p:
+            dfs = p.map(lambda s: (s, pd.read_csv(
+              os.path.join(self.csv_dir, f"{s}.csv"),
+              header=0, index_col=0,
+            ).drop_duplicates().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
+        
+        for sym, temp_df in dfs:
+            if self.start_date in temp_df.index:
+                filtered = temp_df.iloc[temp_df.index.get_loc(self.start_date):, ]
             else:
-                filtered = temp
+                filtered = temp_df
 
-            if self.end_date is not None and self.end_date in temp.index:
-                filtered = filtered.iloc[:temp.index.get_loc(self.end_date), ]
+            if self.end_date is not None and self.end_date in temp_df.index:
+                filtered = filtered.iloc[:temp_df.index.get_loc(self.end_date), ]
 
-            self.symbol_data[s] = filtered
+            self.symbol_data[sym] = filtered
 
             # combine index to pad forward values
             if comb_index is None:
-                comb_index = self.symbol_data[s].index
+                comb_index = self.symbol_data[sym].index
             else:
-                comb_index.union(self.symbol_data[s].index.drop_duplicates())
+                comb_index.union(self.symbol_data[sym].index.drop_duplicates())
 
-            self.latest_symbol_data[s] = []
+            self.latest_symbol_data[sym] = []
+
         # reindex
         for s in self.symbol_list:
             self.symbol_data[s] = self.symbol_data[s].reindex(

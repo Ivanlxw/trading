@@ -1,0 +1,11 @@
+numpy
+pandas
+sklearn
+matplotlib
+requests
+seaborn
+ibapi
+alpaca-trade-api
+TA-Lib
+selenium
+pathos

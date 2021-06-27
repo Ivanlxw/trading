@@ -47,7 +47,7 @@ class SignalEvent(Event):
 
     def details(self):
         date_str = self.datetime.strftime("%Y/%m/%d")
-        return f"Symbol: {self.symbol}\nDate:{date_str}\nPrice:{self.price}\n[DETAILS] {self.other_details}"
+        return f"Symbol: {self.symbol}\nDate:{date_str}\nPrice:{self.price}\nDirection:{self.signal_type}\n[DETAILS] {self.other_details}"
 
 
 class OrderEvent(Event):
