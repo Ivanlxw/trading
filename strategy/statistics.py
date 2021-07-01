@@ -10,7 +10,7 @@ from trading.utilities.enum import OrderPosition
 
 
 class RelativeExtrema(Strategy):
-    def __init__(self, bars, events, long_time, consecutive=2, percentile: int = 10, strat_contrarian:bool = True) -> None:
+    def __init__(self, bars, events, long_time, consecutive=2, percentile: int = 10, strat_contrarian: bool = True) -> None:
         super().__init__(bars, events)
         self.lt = long_time
         self.consecutive = consecutive
@@ -23,7 +23,7 @@ class RelativeExtrema(Strategy):
         if len(bars['datetime']) != self.lt:
             return
         if bars["close"][-1] < np.percentile(bars["close"], self.percentile):
-            if self.contrarian: 
+            if self.contrarian:
                 order_posn = OrderPosition.BUY
             else:
                 order_posn = OrderPosition.SELL
@@ -31,7 +31,7 @@ class RelativeExtrema(Strategy):
                 bars['symbol'], bars['datetime'][-1],
                 order_posn, bars['close'][-1], f"Latest close < {self.percentile} percentile")
         elif bars["close"][-1] > np.percentile(bars["close"], 100-self.percentile):
-            if self.contrarian: 
+            if self.contrarian:
                 order_posn = OrderPosition.SELL
             else:
                 order_posn = OrderPosition.BUY
@@ -41,7 +41,7 @@ class RelativeExtrema(Strategy):
 
 
 class ExtremaBounce(Strategy):
-    def __init__(self, bars, events, short_period: int, long_period: int, percentile:int =25) -> None:
+    def __init__(self, bars, events, short_period: int, long_period: int, percentile: int = 25) -> None:
         super().__init__(bars, events)
         self.short_period = short_period
         self.long_period = long_period
@@ -61,7 +61,8 @@ class LongTermCorrTrend(Strategy):
     """
         Very slow
     """
-    def __init__(self, bars, events, period, corr:float =0.5, strat_contrarian: bool = True):
+
+    def __init__(self, bars, events, period, corr: float = 0.5, strat_contrarian: bool = True):
         super().__init__(bars, events)
         self.period = period
         self.contrarian = strat_contrarian
@@ -71,7 +72,8 @@ class LongTermCorrTrend(Strategy):
         bars_list = self.bars.get_latest_bars(ticker, N=self.period)
         if len(bars_list['datetime']) != self.period:
             return
-        corr = stats.spearmanr(range(self.period), bars_list["close"]).correlation
+        corr = stats.spearmanr(
+            range(self.period), bars_list["close"]).correlation
         if corr > self.corr_cap:
             if self.contrarian:
                 order_posn = OrderPosition.SELL

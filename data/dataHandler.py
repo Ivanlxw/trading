@@ -1,6 +1,7 @@
 import datetime
 import os
 import re
+import sys
 import requests
 import logging
 import pandas as pd
@@ -8,7 +9,7 @@ from abc import ABC, abstractmethod
 import alpaca_trade_api
 
 from trading.event import MarketEvent
-from pathos.pools import ProcessPool
+from pathos.pools import ProcessPool  # not working on Windows
 
 NY = 'America/New_York'
 
@@ -118,20 +119,27 @@ class HistoricCSVDataHandler(DataHandler, ABC):
 
     def _open_convert_csv_files(self):
         comb_index = None
-        with ProcessPool(6) as p:
-            dfs = p.map(lambda s: (s, pd.read_csv(
-              os.path.join(self.csv_dir, f"{s}.csv"),
-              header=0, index_col=0,
-            ).drop_duplicates().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
-        
+        if sys.platform.startswith('win'):
+            dfs = [(sym, pd.read_csv(
+                os.path.join(self.csv_dir, f"{sym}.csv"),
+                header=0, index_col=0,
+            ).drop_duplicates().loc[:, ["open", "high", "low", "close", "volume"]]) for sym in self.symbol_list]
+        else:
+            with ProcessPool(6) as p:
+                dfs = p.map(lambda s: (s, pd.read_csv(
+                    os.path.join(self.csv_dir, f"{s}.csv"),
+                    header=0, index_col=0,
+                ).drop_duplicates().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
         for sym, temp_df in dfs:
             if self.start_date in temp_df.index:
-                filtered = temp_df.iloc[temp_df.index.get_loc(self.start_date):, ]
+                filtered = temp_df.iloc[temp_df.index.get_loc(
+                    self.start_date):, ]
             else:
                 filtered = temp_df
 
             if self.end_date is not None and self.end_date in temp_df.index:
-                filtered = filtered.iloc[:temp_df.index.get_loc(self.end_date), ]
+                filtered = filtered.iloc[:temp_df.index.get_loc(
+                    self.end_date), ]
 
             self.symbol_data[sym] = filtered
 
