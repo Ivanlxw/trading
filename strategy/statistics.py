@@ -1,9 +1,10 @@
 from abc import ABCMeta, abstractmethod
 import logging
-
+import talib
 import numpy as np
 import scipy.stats as stats
 import pandas as pd
+
 from trading.event import SignalEvent
 from trading.strategy.naive import Strategy
 from trading.utilities.enum import OrderPosition
@@ -72,8 +73,10 @@ class LongTermCorrTrend(Strategy):
         bars_list = self.bars.get_latest_bars(ticker, N=self.period)
         if len(bars_list['datetime']) != self.period:
             return
+        sma_vals = talib.SMA(np.array(bars_list["close"]), timeperiod=20)
+        sma_vals = sma_vals[~np.isnan(sma_vals)]
         corr = stats.spearmanr(
-            range(self.period), bars_list["close"]).correlation
+            range(len(sma_vals)), sma_vals).correlation
         if corr > self.corr_cap:
             if self.contrarian:
                 order_posn = OrderPosition.SELL

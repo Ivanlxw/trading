@@ -47,3 +47,20 @@ class Strategy(object):
     def _calculate_signal(self, ticker) -> SignalEvent:
         raise NotImplementedError(
             "Need to implement underlying strategy logic:")
+
+
+class OneSidedOrderOnly(Strategy):
+    """
+    Should be used alongside other signal generator 
+    inside MultipleStrategy classes to filter out BUY/SELL
+
+    Otherwise it may go haywire
+    """
+
+    def __init__(self, bars, events, order_position: OrderPosition):
+        super().__init__(bars, events)
+        self.order_position = order_position
+
+    def _calculate_signal(self, ticker: str) -> list:
+        bars_list = self.bars.get_latest_bars(ticker)
+        return SignalEvent(ticker, bars_list["datetime"][-1], self.order_position, bars_list["close"][-1])
