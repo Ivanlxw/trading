@@ -21,7 +21,7 @@ def get_tiingo_endpoint(endpoint: str, args: str):
 class DataHandler(ABC):
     """
     The goal of a (derived) DataHandler object is to output a generated
-    set of bars (OLHCVI) for each symbol requested. 
+    set of bars (OLHCVI) for each symbol requested.
 
     This will replicate how a live strategy would function as current
     market data would be sent "down the pipe". Thus a historic and live
@@ -55,7 +55,7 @@ class HistoricCSVDataHandler(DataHandler, ABC):
         """
         Args:
         - Event Queue on which to push MarketEvent information to
-        - absolute path of the CSV files 
+        - absolute path of the CSV files
         - a list of symbols determining universal stocks
         """
         self.events = events  # a queue
@@ -130,16 +130,26 @@ class HistoricCSVDataHandler(DataHandler, ABC):
                     os.path.join(self.csv_dir, f"{s}.csv"),
                     header=0, index_col=0,
                 ).drop_duplicates().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
+        dne = []
         for sym, temp_df in dfs:
             if self.start_date in temp_df.index:
                 filtered = temp_df.iloc[temp_df.index.get_loc(
                     self.start_date):, ]
             else:
-                filtered = temp_df
+                logging.info(
+                    f"{sym} does not have {self.start_date} in date index, not included")
+                dne.append(sym)
+                continue
 
-            if self.end_date is not None and self.end_date in temp_df.index:
-                filtered = filtered.iloc[:temp_df.index.get_loc(
-                    self.end_date), ]
+            if self.end_date is not None:
+                if self.end_date in temp_df.index:
+                    filtered = filtered.iloc[:filtered.index.get_loc(
+                        self.end_date), ]
+                else:
+                    logging.info(
+                        f"{sym} does not have {self.end_date} in date index, not included")
+                    dne.append(sym)
+                    continue
 
             self.symbol_data[sym] = filtered
 
@@ -151,6 +161,7 @@ class HistoricCSVDataHandler(DataHandler, ABC):
 
             self.latest_symbol_data[sym] = []
 
+        self.symbol_list = [sym for sym in self.symbol_list if sym not in dne]
         # reindex
         for s in self.symbol_list:
             self.symbol_data[s] = self.symbol_data[s].reindex(
@@ -417,7 +428,7 @@ class TDAData(HistoricCSVDataHandler):
                 self.period_type, self.period,
                 self.frequency_type, self.frequency,
                 start_date=int((pd.Timestamp.now(tz=NY) -
-                               pd.DateOffset(days=100)).timestamp()) * 1000
+                                pd.DateOffset(days=100)).timestamp()) * 1000
             )
 
             for sym in self.symbol_data:
