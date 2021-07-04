@@ -7,7 +7,6 @@ Strategy object take market data as input and produce trading signal events as o
 from abc import ABCMeta, abstractmethod
 
 from trading.event import SignalEvent
-from trading.utilities.enum import OrderPosition
 
 
 class Strategy(object):

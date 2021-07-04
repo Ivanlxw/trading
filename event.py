@@ -1,3 +1,4 @@
+from alpaca_trade_api.entity import Order
 from trading.utilities.enum import OrderPosition, OrderType
 
 
@@ -57,26 +58,27 @@ class OrderEvent(Event):
     This ultimately leads to OrderEvents that will be sent to an brokerHandler.
     """
 
-    def __init__(self, symbol, date, quantity, direction: OrderPosition, price):
+    def __init__(self, symbol, date, quantity, direction: OrderPosition, order_type, price):
         """ Params
         order_type - MARKET or LIMIT for Market or Limit
         quantity - non-nevgative integer
         direction - BUY or SELL for long or short
         """
 
+        assert quantity > 0
+        assert (direction == OrderPosition.BUY or direction == OrderPosition.SELL)
         self.type = 'ORDER'
         self.symbol = symbol
         self.date = date
         self.quantity = quantity
-        assert (direction == OrderPosition.BUY or direction == OrderPosition.SELL)
         self.direction = direction
         self.signal_price = price
+        self.order_type = order_type
         # optional fields
-        self.order_type = None
         self.processed = False
         self.trade_price = None
 
-    def print_order(self,):
+    def order_details(self,):
         return "Order: Symbol={}, Date={}, Type={}, Trade Price = {}, Quantity={}, Direction={}".format(
             self.symbol, self.date, self.order_type,
             self.trade_price, self.quantity, self.direction)
@@ -94,7 +96,7 @@ class FillEvent(Event):
     """
     # FillEvent(order_event, calculate_commission())
 
-    def __init__(self, order_event, commission):
+    def __init__(self, order_event: OrderEvent, commission):
         """
         Parameters:
         timeindex - The bar-resolution when the order was filled.
@@ -106,5 +108,5 @@ class FillEvent(Event):
         commission - An optional commission sent from IB.
         """
         self.type = 'FILL'
-        self.order_event = order_event
+        self.order_event: OrderEvent = order_event
         self.commission = commission
