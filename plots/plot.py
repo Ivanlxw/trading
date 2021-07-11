@@ -54,7 +54,7 @@ class PlotIndividual(Plot):
         if len(self.signals) == 0:
             return
         data = self.bars.latest_symbol_data
-        for idx, ticker in enumerate(random.sample(data.keys(), self.L)):
+        for idx, ticker in enumerate(random.sample(self.bars.symbol_list, self.L)):
             buy_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
                 self.signals[:, -1] == OrderPosition.BUY))]
             sell_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
