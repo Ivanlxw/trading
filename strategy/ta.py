@@ -79,7 +79,8 @@ class MeanReversionTA(SimpleTACross):
     Strategy is based on the assumption that prices will always revert to the smoothed line.
     Will buy/sell when it crosses the smoothed line and EXIT when it reaches beyond
     the confidence interval, calculated with sd - and Vice-versa works as well
-    which method to use is denoted in exit - "cross" or "bb"
+    args:
+        exit:bool - true means exit on "cross", else exit on "bb"
     '''
 
     def __init__(self, bars, events, timeperiod: int, ma_type, sd: float = 2, exit: bool = True):
@@ -115,8 +116,7 @@ class MeanReversionTA(SimpleTACross):
             boundary = sd_TA*self.sd_multiplier
 
             if self.exit:
-                self._exit_ma_cross(bars, TAs, boundary)
-                return
+                return self._exit_ma_cross(bars, TAs, boundary)
 
             if self._break_down(close_prices, TAs) or \
                     (close_prices[-1] < (TAs[-1] + boundary) and close_prices[-2] > (TAs[-2] + boundary)):

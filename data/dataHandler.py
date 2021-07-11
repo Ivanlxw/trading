@@ -169,7 +169,7 @@ class HistoricCSVDataHandler(DataHandler, ABC):
             self.symbol_data[s] = self.symbol_data[s].reindex(
                 index=comb_index, method='pad', fill_value=0)
             self.symbol_data[s].index = self.symbol_data[s].index.map(
-                lambda x: datetime.datetime.strptime(x, '%Y-%m-%d'))
+                lambda x: pd.to_datetime(x, infer_datetime_format=True))
 
     def _to_generator(self):
         for s in self.symbol_list:
@@ -424,7 +424,7 @@ class TDAData(HistoricCSVDataHandler):
             self.symbol_data[sym] = self.symbol_data[sym].reindex(
                 index=comb_index, method='pad', fill_value=0)
             self.symbol_data[sym].index = self.symbol_data[sym].index.map(
-                lambda x: datetime.datetime.strptime(x, "%Y-%m-%d %H:%M"))
+                lambda x: pd.to_datetime(x, infer_datetime_format=True))
 
     def update_bars(self):
         if not self.live:
@@ -454,7 +454,7 @@ class TDAData(HistoricCSVDataHandler):
 
 
 class FMPData(HistoricCSVDataHandler):
-    def __init__(self, events, symbol_list, start_date: str,
+    def __init__(self, events, symbol_list, start_date: str = None, end_date: str = None,
                  frequency_type="daily", live: bool = False) -> None:
         assert frequency_type in ["1min", "5min",
                                   "15min", "30min", "1hour", "4hour", "daily"]
@@ -462,6 +462,7 @@ class FMPData(HistoricCSVDataHandler):
         self.symbol_list = symbol_list
         self.api_key = os.environ["FMP_API"]
         self.start_date = start_date
+        self.end_date = end_date
         self.frequency = frequency_type
         self.live = live
         self.continue_backtest = True
@@ -471,14 +472,14 @@ class FMPData(HistoricCSVDataHandler):
         self.symbol_data = {}
         self.latest_symbol_data = {}
         self._get_symbol_data()
-        if not live:
+        if not live and self.frequency != "daily":
             self._save_to_csv()
         self._to_generator()
 
     def __copy__(self):
         return FMPData(
             self.events, self.symbol_list,
-            self.start_date, self.frequency, self.live
+            self.start_date, self.end_date, self.frequency, self.live
         )
 
     def _get_symbol_data(self):
@@ -497,6 +498,12 @@ class FMPData(HistoricCSVDataHandler):
                 sym_to_remove.append(sym)
                 continue
 
+            if self.start_date in temp_df.index and self.frequency == "daily":
+                temp_df = temp_df.iloc[temp_df.index.get_loc(
+                    self.start_date):, ]
+            if self.end_date in temp_df.index and self.frequency == "daily":
+                temp_df = temp_df.iloc[:temp_df.index.get_loc(
+                    self.end_date), ]
             self.symbol_data[sym] = temp_df
 
             # combine index to pad forward values
@@ -512,7 +519,7 @@ class FMPData(HistoricCSVDataHandler):
             self.symbol_data[s] = self.symbol_data[s].reindex(
                 index=comb_index, method='pad', fill_value=0)
             self.symbol_data[s].index = self.symbol_data[s].index.map(
-                lambda x: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S'))
+                lambda x: pd.to_datetime(x, infer_datetime_format=True))
 
             self.latest_symbol_data[s] = []
 
@@ -523,12 +530,50 @@ class FMPData(HistoricCSVDataHandler):
             url = f"https://financialmodelingprep.com/api/v3/historical-chart/{self.frequency}/{symbol}?&apikey={self.api_key}"
         resp = requests.get(url)
         if resp.ok:
-            temp_df = pd.DataFrame(resp.json())
+            if self.frequency == "daily":
+                temp_df = pd.DataFrame(
+                    resp.json()["historical"]).loc[:, ['date', 'open', 'high', 'low', 'close', 'volume']]
+            else:
+                temp_df = pd.DataFrame(resp.json())
             if temp_df.empty:
                 return
             temp_df = temp_df.iloc[::-1]
             temp_df.set_index('date', inplace=True)
             return temp_df
+
+    def get_historical_fundamentals(self):
+        self.fundamental_data = {}
+        exclude_sym = []
+        for sym in self.symbol_list:
+            dcf_hist = self._get_historical_dcf(sym)
+            fg_hist = self._get_historical_financial_growth(sym)
+            fund_hist = pd.concat([dcf_hist, fg_hist], axis=1, join="inner")
+            fund_hist.index = fund_hist.index.map(
+                lambda x: pd.to_datetime(x, infer_datetime_format=True))
+            # print(f"symbol:\t{sym}")
+            # print(fund_hist.tail())
+            if fund_hist.empty:
+                exclude_sym.append(sym)
+                continue
+            self.fundamental_data[sym] = fund_hist
+        self.symbol_list = [
+            sym for sym in self.symbol_list if sym not in exclude_sym]
+
+    def _get_historical_dcf(self, sym):
+        url = f"https://financialmodelingprep.com/api/v3/historical-daily-discounted-cash-flow/{sym}?period=quarter&apikey={self.api_key}"
+        resp = requests.get(url)
+        if resp.ok:
+            fundamental_df_temp = pd.DataFrame(resp.json()).iloc[::-1]
+            fundamental_df_temp.set_index("date", inplace=True)
+            return fundamental_df_temp.loc[:, "dcf"]
+
+    def _get_historical_financial_growth(self, sym):
+        url = f"https://financialmodelingprep.com/api/v3/financial-growth/{sym}?period=quarter&apikey={self.api_key}"
+        resp = requests.get(url)
+        if resp.ok:
+            financial_growth = pd.DataFrame(resp.json()).iloc[::-1]
+            financial_growth.set_index("date", inplace=True)
+            return financial_growth.loc[:, ["revenueGrowth", "fiveYRevenueGrowthPerShare", "fiveYNetIncomeGrowthPerShare", "assetGrowth", "bookValueperShareGrowth"]]
 
     def _save_to_csv(self):
         csv_dir = os.path.join(os.path.dirname(
