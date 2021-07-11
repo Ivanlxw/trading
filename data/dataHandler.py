@@ -1,4 +1,5 @@
 import datetime
+from itertools import count
 import os
 import re
 import sys
@@ -7,10 +8,11 @@ import logging
 import pandas as pd
 from abc import ABC, abstractmethod
 import alpaca_trade_api
+from requests.api import request
 
 from trading.event import MarketEvent
 from pathos.pools import ProcessPool  # not working on Windows
-
+import pathos.pools as pools
 NY = 'America/New_York'
 
 
@@ -324,9 +326,12 @@ class TDAData(HistoricCSVDataHandler):
         if type(start_date) != str and re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start_date):
             raise Exception(
                 "Start date has to be string and following format: YYYY-MM-DD")
+
         # convert to epoch in millisecond
-        self.start_date = int(datetime.datetime.strptime(
+        self.start_date_epoch = int(datetime.datetime.strptime(
             start_date, "%Y-%m-%d").timestamp() * 1000)
+        self.start_date = pd.Timestamp(
+            self.start_date_epoch/1000, unit='s', tz=NY)
 
         self.events = events
         self.symbol_list = symbol_list
@@ -342,7 +347,7 @@ class TDAData(HistoricCSVDataHandler):
         self.live = live
         if not self.live:
             self._set_symbol_data(self.period_type, self.period,
-                                  self.frequency_type, self.frequency, self.start_date)
+                                  self.frequency_type, self.frequency, self.start_date_epoch)
             self._to_generator()
 
         self.continue_backtest = True
@@ -350,7 +355,7 @@ class TDAData(HistoricCSVDataHandler):
     def __copy__(self):
         return TDAData(
             self.events, self.symbol_list, datetime.datetime.fromtimestamp(
-                self.start_date/1000).strftime('%Y-%m-%d'),
+                self.start_date_epoch/1000).strftime("%Y-%m-%d"),
             self.period_type, self.period, self.frequency_type, self.frequency, self.live
         )
 
@@ -391,10 +396,11 @@ class TDAData(HistoricCSVDataHandler):
                 sym, period_type, period, frequency_type, frequency, start_date)
             if price_history is not None:
                 if not price_history["empty"]:
-                    temp = pd.DataFrame(price_history["candles"])
+                    temp = pd.DataFrame(
+                        price_history["candles"]).drop_duplicates()
                     temp = temp.set_index('datetime')
                     temp.index = temp.index.map(
-                        lambda x: datetime.datetime.fromtimestamp(x/1000).strftime("%Y-%m-%d"))
+                        lambda x: datetime.datetime.fromtimestamp(x/1000).strftime("%Y-%m-%d %H:%M"))
                     self.symbol_data[sym] = temp
 
                     # combine index to pad forward values
@@ -405,16 +411,20 @@ class TDAData(HistoricCSVDataHandler):
                             self.symbol_data[sym].index.drop_duplicates())
 
                     self.latest_symbol_data[sym] = []
+                else:
+                    logging.info(f"Removing {sym}")
+                    sym_to_remove.append(sym)
             else:
                 logging.info(f"Removing {sym}")
                 sym_to_remove.append(sym)
+
         self.symbol_list = [
             sym for sym in self.symbol_list if sym not in sym_to_remove]
         for sym in self.symbol_list:
             self.symbol_data[sym] = self.symbol_data[sym].reindex(
                 index=comb_index, method='pad', fill_value=0)
             self.symbol_data[sym].index = self.symbol_data[sym].index.map(
-                lambda x: datetime.datetime.strptime(x, "%Y-%m-%d"))
+                lambda x: datetime.datetime.strptime(x, "%Y-%m-%d %H:%M"))
 
     def update_bars(self):
         if not self.live:
@@ -430,6 +440,118 @@ class TDAData(HistoricCSVDataHandler):
                 start_date=int((pd.Timestamp.now(tz=NY) -
                                 pd.DateOffset(days=100)).timestamp()) * 1000
             )
+
+            for sym in self.symbol_data:
+                self.latest_symbol_data[sym] = [{
+                    "datetime": obs[0],
+                    "open": obs[1].get("open"),
+                    "high": obs[1].get("high"),
+                    "low": obs[1].get("low"),
+                    "close": obs[1].get("close"),
+                    "volume": obs[1].get("volume")
+                } for obs in self.symbol_data[sym].iterrows()]
+        self.events.put(MarketEvent())
+
+
+class FMPData(HistoricCSVDataHandler):
+    def __init__(self, events, symbol_list, start_date: str,
+                 frequency_type="daily", live: bool = False) -> None:
+        assert frequency_type in ["1min", "5min",
+                                  "15min", "30min", "1hour", "4hour", "daily"]
+        self.events = events
+        self.symbol_list = symbol_list
+        self.api_key = os.environ["FMP_API"]
+        self.start_date = start_date
+        self.frequency = frequency_type
+        self.live = live
+        self.continue_backtest = True
+        self.data_fields = ['symbol', 'datetime',
+                            'open', 'high', 'low', 'close', 'volume']
+
+        self.symbol_data = {}
+        self.latest_symbol_data = {}
+        self._get_symbol_data()
+        if not live:
+            self._save_to_csv()
+        self._to_generator()
+
+    def __copy__(self):
+        return FMPData(
+            self.events, self.symbol_list,
+            self.start_date, self.frequency, self.live
+        )
+
+    def _get_symbol_data(self):
+        sym_to_remove = []
+        comb_index = None
+        if sys.platform.startswith('win'):
+            dfs = [(sym, self._get_historical_data(sym))
+                   for sym in self.symbol_list]
+        else:
+            with pools.ThreadPool(4) as p:
+                dfs = p.map(lambda s: (s,
+                                       self._get_historical_data(s)), self.symbol_list)
+
+        for sym, temp_df in dfs:
+            if temp_df is None:
+                sym_to_remove.append(sym)
+                continue
+
+            self.symbol_data[sym] = temp_df
+
+            # combine index to pad forward values
+            if comb_index is None:
+                comb_index = self.symbol_data[sym].index
+            else:
+                comb_index.union(self.symbol_data[sym].index.drop_duplicates())
+
+        self.symbol_list = [
+            sym for sym in self.symbol_list if sym not in sym_to_remove]
+        # reindex
+        for s in self.symbol_list:
+            self.symbol_data[s] = self.symbol_data[s].reindex(
+                index=comb_index, method='pad', fill_value=0)
+            self.symbol_data[s].index = self.symbol_data[s].index.map(
+                lambda x: datetime.datetime.strptime(x, '%Y-%m-%d %H:%M:%S'))
+
+            self.latest_symbol_data[s] = []
+
+    def _get_historical_data(self, symbol):
+        if self.frequency == "daily":
+            url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{symbol}?from={self.start_date}&apikey={self.api_key}"
+        else:
+            url = f"https://financialmodelingprep.com/api/v3/historical-chart/{self.frequency}/{symbol}?&apikey={self.api_key}"
+        resp = requests.get(url)
+        if resp.ok:
+            temp_df = pd.DataFrame(resp.json())
+            if temp_df.empty:
+                return
+            temp_df = temp_df.iloc[::-1]
+            temp_df.set_index('date', inplace=True)
+            return temp_df
+
+    def _save_to_csv(self):
+        csv_dir = os.path.join(os.path.dirname(
+            __file__), f"../../data/data/{self.frequency}")
+        if not os.path.exists(csv_dir):
+            os.makedirs(csv_dir)
+        for sym, df in self.symbol_data.items():
+            csv_path = os.path.join(csv_dir, f"{sym}.csv")
+            if os.path.exists(csv_path):
+                existing_df = pd.read_csv(csv_path, header=0, index_col=0)
+
+                df_copy = pd.concat([existing_df, df]).drop_duplicates()
+                df_copy.index = df_copy.index.map(lambda x: str(x))
+                df = df_copy.sort_index()
+            df.to_csv(csv_path)
+
+    def update_bars(self):
+        if not self.live:
+            super().update_bars()
+        else:
+            for sym in self.symbol_list:
+                temp_df = self._get_historical_data(sym)
+                self.symbol_data[sym] = temp_df
 
             for sym in self.symbol_data:
                 self.latest_symbol_data[sym] = [{
