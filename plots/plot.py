@@ -1,17 +1,15 @@
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import math
 import random
 
-from backtest.portfolio.portfolio import Portfolio
-from trading.data.dataHandler import DataHandler
 from trading.utilities.enum import OrderPosition
 
 
 class Plot:
-    def __init__(self, port: Portfolio) -> None:
+    def __init__(self, port) -> None:
+        """ port should be a portfolio class that has a member equity_curve which holds a pd.DataFrame """
         self.port = port
         sns.set()
         sns.set_style('darkgrid')
