@@ -65,10 +65,11 @@ class DataHandler(ABC):
                     sym_fundamental_fp, header=0, index_col=0)
                 fund_hist.index = fund_hist.index.map(
                     lambda x: pd.to_datetime(x, infer_datetime_format=True))
-                self.fundamental_data[sym] = fund_hist
+                self.fundamental_data[sym] = fund_hist.sort_index()
             else:
                 exclude_sym.append(sym)
-        log_message(f"Excluded symbols: {exclude_sym}")
+        log_message(
+            f"[get_historical_fundamentals] Excluded symbols: {exclude_sym}")
         self.symbol_list = list(self.fundamental_data.keys())
 
     @abstractmethod
@@ -159,6 +160,7 @@ class HistoricCSVDataHandler(DataHandler):
 
             self.latest_symbol_data[sym] = []
         self.symbol_list = list(self.symbol_data.keys())
+        logging.info(f"[_open_convert_csv_files] Excluded symbols: {dne}")
         # reindex
         for s in self.symbol_list:
             self.symbol_data[s] = self.symbol_data[s].reindex(
@@ -384,6 +386,7 @@ class TDAData(HistoricCSVDataHandler):
                 sym_to_remove.append(sym)
 
         self.symbol_list = list(self.symbol_data.keys())
+        logging.info(f"[_set_symbol_data] Excluded symbols: {sym_to_remove}")
         for sym in self.symbol_list:
             self.symbol_data[sym] = self.symbol_data[sym].reindex(
                 index=comb_index, method='pad', fill_value=0)
