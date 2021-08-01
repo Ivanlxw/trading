@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+import talib
 import numpy as np
 from enum import Enum, auto
 from trading.event import SignalEvent
@@ -125,104 +127,77 @@ class MeanReversionTA(SimpleTACross):
                     (close_prices[-1] > (TAs[-1] - boundary) and close_prices[-2] < (TAs[-2] - boundary)):
                 return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])
 
-
-class TAIndicatorType(Enum):
-    TwoArgs = auto()
-    ThreeArgs = auto()
-
-
-class _TA():
-    def __init__(self, bars, ta_indicator, ta_period, ta_indicator_type: TAIndicatorType) -> None:
-        self.bars = bars
-        self.ta_indicator = ta_indicator
+class TAFunctor(Strategy, ABC):
+    def __init__(self, bars, events, functor, ta_period:int, order_position: OrderPosition, description: str):
+        super().__init__(bars, events)
+        self.functor = functor
+        self.order_position = order_position
+        self.description = description 
         self.ta_period = ta_period
-        self.ta_indicator_type = ta_indicator_type
-
-    def _get_ta_vals(self, bars):
-        if self.ta_indicator_type == TAIndicatorType.TwoArgs:
-            ta_values = self.ta_indicator(
-                np.array(bars['close']), self.ta_period)
-            # remove nan values
-            return [ta for ta in ta_values if not np.isnan(ta)]
-        elif self.ta_indicator_type == TAIndicatorType.ThreeArgs:
-            ta_values = self.ta_indicator(np.array(bars['high']), np.array(
-                bars['low']), np.array(bars['close']), self.ta_period)
-            # remove nan values
-            return [ta for ta in ta_values if not np.isnan(ta)]
-        else:
-            raise Exception(
-                f"TaIndicatorType is not acceptable: {self.ta_indicator_type}")
-
-
-class BoundedTA(_TA, Strategy):
-    def __init__(self, bars, events, period, ta_period, floor, ceiling, ta_indicator, ta_indicator_type: TAIndicatorType):
-        super().__init__(
-            bars, ta_indicator, ta_period, ta_indicator_type)
-        self.events = events
-        self.period = period
-        self.floor = floor
-        self.ceiling = ceiling
-
-    def _calculate_signal(self, symbol) -> SignalEvent:
-        """
-            Buys when ta_indicator is min and below floor
-            Sells when ta_indicator is max and above ceiling
-        """
-        bars = self.bars.get_latest_bars(symbol, self.ta_period+self.period)
-        if len(bars['datetime']) < self.ta_period+self.period:
+    
+    def _calculate_signal(self, ticker) -> SignalEvent:
+        ohlc_data = self.bars.get_latest_bars(ticker, self.ta_period+2)
+        if len(ohlc_data['datetime']) < self.ta_period+2:
             return
-        ta_values = self._get_ta_vals(bars)
-        if ta_values[-1] < self.floor and np.average(ta_values[-self.period:]) > ta_values[-1]:
-            # and np.corrcoef(np.arange(1, self.ta_period+self.period+1), bars['close'])[1][0] > 0:
-            return SignalEvent(bars['symbol'], bars['datetime'][-1],
-                               OrderPosition.BUY, bars['close'][-1],
-                               f"{self.ta_indicator.__name__} Value: {ta_values[-1]}"
-                               )
-        elif ta_values[-1] > self.ceiling and np.average(ta_values[-self.period:]) < ta_values[-1]:
-            return SignalEvent(bars['symbol'], bars['datetime'][-1],
-                               OrderPosition.SELL, bars['close'][-1],
-                               f"{self.ta_indicator.__name__} Value: {ta_values[-1]}")
+        if self.functor(ohlc_data):
+            return SignalEvent(ohlc_data['symbol'], ohlc_data['datetime'][-1],
+                    self. order_position, ohlc_data['close'][-1], self.description)
+    
+    @abstractmethod
+    def _func(self, ohlc_data):
+        raise NotImplementedError("_func have to be implemented in subclasses")
+    
+""" Helper functions for fundamental data """
+def sma(ohlc_data, period: int) -> list:
+    return talib.SMA(np.array(ohlc_data["close"]), period)
 
+def rsi(ohlc_data, period: int) -> list:
+    return talib.RSI(np.array(ohlc_data["close"]), period)
 
-class ExtremaTA(_TA, Strategy):
-    def __init__(self, bars, events, ta_indicator, ta_period, ta_indicator_type: TAIndicatorType,
-                 extrema_period: int, strat_contrarian: bool = True, consecutive: int = 1):
-        super().__init__(
-            bars, ta_indicator, ta_period, ta_indicator_type)
-        self.events = events
-        self.extrema_period = extrema_period
-        self.consecutive = consecutive
-        self.max_consecutive = 0
-        self.min_consecutive = 0
-        self.contrarian = strat_contrarian
+def cci(ohlc_data, period: int) -> list:
+    return talib.CCI(np.array(ohlc_data["high"]), np.array(ohlc_data["low"]), np.array(ohlc_data["close"]), period)
 
-    def _calculate_signal(self, symbol) -> SignalEvent:
-        bars = self.bars.get_latest_bars(
-            symbol, self.ta_period+self.extrema_period)
-        if len(bars['datetime']) < self.ta_period+self.extrema_period:
-            return
-        ta_values = self._get_ta_vals(bars)
-        if ta_values[-1] == min(ta_values):
-            self.max_consecutive += 1
-            if self.max_consecutive == self.consecutive:
-                self.max_consecutive = 0
-                if self.contrarian:
-                    order_position = OrderPosition.BUY
-                else:
-                    order_position = OrderPosition.SELL
-                return SignalEvent(bars['symbol'], bars['datetime'][-1],
-                                   order_position, bars['close'][-1],
-                                   f"{self.ta_indicator.__name__} Value: {ta_values[-1]}\nExtreme_period: {self.extrema_period}"
-                                   )
-        elif ta_values[-1] == max(ta_values):
-            self.min_consecutive += 1
-            if self.min_consecutive == self.consecutive:
-                self.min_consecutive = 0
-                if self.contrarian:
-                    order_position = OrderPosition.SELL
-                else:
-                    order_position = OrderPosition.BUY
-                return SignalEvent(bars['symbol'], bars['datetime'][-1],
-                                   order_position, bars['close'][-1],
-                                   f"{self.ta_indicator.__name__} Value: {ta_values[-1]}\nExtreme_period: {self.extrema_period}"
-                                   )
+""" Classes that hold strategy logic """
+class VolAboveSMA(TAFunctor):
+    def __init__(self, bars, events, ta_period:int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, ta_period, order_position, f"Vol above SMA(Vols, {ta_period})")
+        self.ta_period = ta_period
+    
+    def _func(self, ohlc_data):
+        return ohlc_data["volume"][-1] > talib.SMA(np.array(ohlc_data["volume"]), self.ta_period)[-1]
+
+class TAMin(TAFunctor):
+    """ Runs functor (a TA function) and checks that the last value is a min"""
+    def __init__(self, bars, events, ta_func, ta_period: int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, ta_period, order_position, f"Minimal TA in {ta_period} periods")
+        self.ta_func = ta_func
+
+    def _func(self, ohlc_data):
+        ta_res = self.ta_func(ohlc_data, self.ta_period)
+        return ta_res[-1] ==  np.amin(ta_res)
+
+class TAMax(TAFunctor):
+    """ Runs functor (a TA function) and checks that the last value is a min"""
+    def __init__(self, bars, events, ta_func, ta_period: int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, ta_period, order_position, f"Minimal TA in {ta_period} periods")
+        self.ta_func = ta_func
+
+    def _func(self, ohlc_data):
+        ta_res = self.ta_func(ohlc_data, self.ta_period)
+        return ta_res[-1] ==  np.amax(ta_res)
+
+class TALessThan(TAFunctor):
+    def __init__(self, bars, events, ta_func, ta_period: int, max_val:float, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, ta_period, order_position, f"{ta_func.__name__} less than {max_val}")
+        self.max_val = max_val
+
+    def _func(self, ohlc_data):
+        return self.ta_func(ohlc_data, self.ta_period)[-1] < self.max_val
+
+class TAMoreThan(TAFunctor):
+    def __init__(self, bars, events, ta_func, ta_period: int, min_val:float, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, ta_period, order_position, f"{ta_func.__name__} less than {min_val}")
+        self.min_val = min_val
+
+    def _func(self, ohlc_data):
+        return self.ta_func(ohlc_data, self.ta_period)[-1] > self.min_val

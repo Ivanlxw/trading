@@ -1,8 +1,7 @@
-from abc import ABCMeta, abstractmethod
-from backtest.utilities.utils import log_message
-from typing import Optional
 import numpy as np
 import pandas as pd
+from abc import ABC, ABCMeta, abstractmethod
+from typing import Optional
 
 from trading.data.dataHandler import DataHandler
 from trading.utilities.enum import OrderPosition
@@ -32,15 +31,17 @@ class FundamentalStrategy(Strategy):
         raise NotImplementedError(
             "Use a subclass of FundamentalStrategy that implements _calculate_signal")
 
-class FundamentalFunctor(FundamentalStrategy):
+
+class FundamentalFunctor(FundamentalStrategy, ABC):
     ''' Runs functor on a list of fundamental values and returns bool. If true, buy if self.min and sell otherwise (max) 
         functor takes in the whole dataframe of rows (n*numer_of_fundamental_cols) and should return bool
     '''
 
-    def __init__(self, bars: DataHandler, events, functor, n: int, order_position: OrderPosition, description: str = "") -> None:
+    def __init__(self, bars: DataHandler, events, functor, fundamental: str, n: int, order_position: OrderPosition, description: str = "") -> None:
         super().__init__(bars, events)
         self.n = n
         self.functor = functor
+        self.fundamental = fundamental
         self.order_position = order_position
         self.description = description
 
@@ -53,30 +54,70 @@ class FundamentalFunctor(FundamentalStrategy):
             return
         fundamental_vals = self.bars.fundamental_data[sym].iloc[n_idx_date -
                                                                 self.n: n_idx_date]
-        
+
         latest = self.bars.get_latest_bars(sym)
-        if self.functor(fundamental_vals):            
+        if self.functor(fundamental_vals):
             return SignalEvent(sym, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)
 
+    @abstractmethod
+    def _func(self, fund_data, fundamental):
+        raise NotImplementedError("_func has to be implemented in subclass")
 
-def fundamental_relative(bars, events, fundamental: str, n: int, order_position: OrderPosition):
-    if min:
-        def functor(fund_bars): return np.amin(
-            fund_bars[fundamental]) == fund_bars[fundamental][-1]
-    else:
-        def functor(fund_bars): return np.amax(
-            fund_bars[fundamental]) == fund_bars[fundamental][-1]
-    return FundamentalFunctor(bars, events, functor, n, order_position, f"{fundamental} is lowest in {n} quarters")
 
-def fundamental_extrema(bars, events, fundamental: str, extrema:float, flooring:bool, order_position: OrderPosition):
-    if flooring:
-        def functor(fund_bars):
-            return fund_bars[fundamental][-1] > extrema
-        return FundamentalFunctor(bars, events, functor, 1, order_position, f"{fundamental} is higher than {extrema}")
-    else:
-        def functor(fund_bars):
-            return fund_bars[fundamental][-1] < extrema
-        return FundamentalFunctor(bars, events, functor, 1, order_position, f"{fundamental} is lower than {extrema}")
+""" Helper functions for fundamental data """
+
+def at_most(fund_bars, fundamental, extrema):
+    return fund_bars[fundamental][-1] < extrema
+
+
+def at_least(fund_bars, fundamental, extrema):
+    return fund_bars[fundamental][-1] > extrema
+
+
+def last_is_max(fund_bars, fundamental):
+    return np.amax(fund_bars[fundamental]) == fund_bars[fundamental][-1]
+
+
+def last_is_min(fund_bars, fundamental):
+    return np.amin(fund_bars[fundamental]) == fund_bars[fundamental][-1]
+
+
+class FundRelativeMin(FundamentalFunctor):
+    def __init__(self, bars, events, fundamental: str, period: int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, fundamental, period,
+                         order_position, f"{fundamental} is lowest in {period} quarters")
+
+    def _func(self, fund_data):
+        return last_is_min(fund_data, self.fundamental)
+
+
+class FundRelativeMax(FundamentalFunctor):
+    def __init__(self, bars, events, fundamental: str, period: int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, fundamental, period,
+                         order_position, f"{fundamental} is lowest in {period} quarters")
+
+    def _func(self, fund_data):
+        return last_is_max(fund_data, self.fundamental)
+
+
+class FundAtLeast(FundamentalFunctor):
+    def __init__(self, bars, events, fundamental: str, min_val: int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, fundamental, 2,
+                         order_position, f"{fundamental} is at least {min_val}")
+        self.min_val = min_val
+
+    def _func(self, fund_data):
+        return at_least(fund_data, self.fundamental, self.min_val)
+
+
+class FundAtMost(FundamentalFunctor):
+    def __init__(self, bars, events, fundamental: str, max_val: int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, fundamental, 2,
+                         order_position, f"{fundamental} is at least {max_val}")
+        self.max_val = max_val
+
+    def _func(self, fund_data):
+        return at_most(fund_data, self.fundamental, self.max_val)
 
 
 class LowDCF(FundamentalStrategy):
