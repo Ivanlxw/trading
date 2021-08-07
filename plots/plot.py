@@ -39,7 +39,7 @@ class PlotIndividual(Plot):
         self.bars = bars
         self.signals = np.array(
             [[sig.symbol, sig.datetime, sig.price, sig.signal_type] for sig in signals])
-        self.L = min(16, len(self.bars.symbol_list))
+        self.L = min(16, len(self.bars.symbol_data.keys()))
         self.dims = self._get_squared_dims()
 
     def _get_squared_dims(self) -> tuple:
@@ -52,7 +52,7 @@ class PlotIndividual(Plot):
         if len(self.signals) == 0:
             return
         data = self.bars.latest_symbol_data
-        for idx, ticker in enumerate(random.sample(self.bars.symbol_list, self.L)):
+        for idx, ticker in enumerate(random.sample(self.bars.symbol_data.keys(), self.L)):
             buy_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
                 self.signals[:, -1] == OrderPosition.BUY))]
             sell_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (

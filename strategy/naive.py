@@ -38,7 +38,7 @@ class Strategy(object):
         '''
         signals = []
         if event.type == "MARKET":
-            for s in self.bars.symbol_list:
+            for s in self.bars.symbol_data:
                 signals.append(self._calculate_signal(s))
         return signals
 
@@ -46,3 +46,9 @@ class Strategy(object):
     def _calculate_signal(self, ticker) -> SignalEvent:
         raise NotImplementedError(
             "Need to implement underlying strategy logic:")
+    
+    def describe(self):
+        """ Return all variables minus bars and events """
+        return {
+            f"{self.__class__.__name__}" : str(self.__dict__)
+        }

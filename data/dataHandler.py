@@ -51,7 +51,7 @@ class DataHandler(ABC):
         self.fundamental_data = None
 
     def _to_generator(self):
-        for s in self.symbol_list:
+        for s in self.symbol_data:
             self.symbol_data[s] = self.symbol_data[s].iterrows()
 
     def get_historical_fundamentals(self, refresh=False):
@@ -70,7 +70,6 @@ class DataHandler(ABC):
                 exclude_sym.append(sym)
         log_message(
             f"[get_historical_fundamentals] Excluded symbols: {exclude_sym}")
-        self.symbol_list = list(self.fundamental_data.keys())
 
     @abstractmethod
     def get_latest_bars(self, symbol, N=1):
@@ -159,10 +158,9 @@ class HistoricCSVDataHandler(DataHandler):
                 comb_index.union(self.symbol_data[sym].index.drop_duplicates())
 
             self.latest_symbol_data[sym] = []
-        self.symbol_list = list(self.symbol_data.keys())
         logging.info(f"[_open_convert_csv_files] Excluded symbols: {dne}")
         # reindex
-        for s in self.symbol_list:
+        for s in self.symbol_data:
             self.symbol_data[s] = self.symbol_data[s].reindex(
                 index=comb_index, method='pad', fill_value=0)
             self.symbol_data[s].index = self.symbol_data[s].index.map(
@@ -203,7 +201,7 @@ class HistoricCSVDataHandler(DataHandler):
         logging.error("Symbol is not available in historical data set.")
 
     def update_bars(self):
-        for s in self.symbol_list:
+        for s in self.symbol_data:
             try:
                 bar = next(self._get_new_bar(s))
             except StopIteration:
@@ -385,9 +383,8 @@ class TDAData(HistoricCSVDataHandler):
                 logging.info(f"Removing {sym}")
                 sym_to_remove.append(sym)
 
-        self.symbol_list = list(self.symbol_data.keys())
         logging.info(f"[_set_symbol_data] Excluded symbols: {sym_to_remove}")
-        for sym in self.symbol_list:
+        for sym in self.symbol_data:
             self.symbol_data[sym] = self.symbol_data[sym].reindex(
                 index=comb_index, method='pad', fill_value=0)
             self.symbol_data[sym].index = self.symbol_data[sym].index.map(

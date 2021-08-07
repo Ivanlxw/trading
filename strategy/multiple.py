@@ -17,7 +17,7 @@ class MultipleStrategy(ABC):
         final_strat = strat_list[0]
         final_strat.other_details = ""
         for strat in strat_list:
-            final_strat.other_details += "\n" + strat.other_details
+            final_strat.other_details += strat.other_details + "\n"
         return final_strat
 
 
@@ -32,6 +32,12 @@ class MultipleAllStrategy(Strategy, MultipleStrategy):
             strategies.append(strategy._calculate_signal(symbol))
         if (self.order_same_dir(strategies)):
             return self.generate_final_strat(strategies)
+    
+    def describe(self) -> dict:
+        return {
+            "class": self.__class__.__name__,
+            "strategies": [strat.describe() for strat in self.strategies]
+        }
 
 
 class MultipleAnyStrategy(Strategy, MultipleStrategy):
@@ -48,3 +54,9 @@ class MultipleAnyStrategy(Strategy, MultipleStrategy):
                 strat for strat in strategies if strat is not None]
             if (self.order_same_dir(filtered_strat)):
                 return self.generate_final_strat(filtered_strat)
+    
+    def describe(self) -> dict:
+        return {
+            "class": self.__class__.__name__,
+            "strategies": [strat.describe() for strat in self.strategies]
+        }
