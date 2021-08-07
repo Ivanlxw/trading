@@ -128,16 +128,17 @@ class MeanReversionTA(SimpleTACross):
                 return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])
 
 class TAFunctor(Strategy, ABC):
-    def __init__(self, bars, events, functor, ta_period:int, order_position: OrderPosition, description: str):
+    def __init__(self, bars, events, functor, ta_period:int, period:int, order_position: OrderPosition, description: str):
         super().__init__(bars, events)
         self.functor = functor
         self.order_position = order_position
         self.description = description 
         self.ta_period = ta_period
+        self.period = period
     
     def _calculate_signal(self, ticker) -> SignalEvent:
-        ohlc_data = self.bars.get_latest_bars(ticker, self.ta_period+2)
-        if len(ohlc_data['datetime']) < self.ta_period+2:
+        ohlc_data = self.bars.get_latest_bars(ticker, self.ta_period+self.period)
+        if len(ohlc_data['datetime']) < self.ta_period+self.period:
             return
         if self.functor(ohlc_data):
             return SignalEvent(ohlc_data['symbol'], ohlc_data['datetime'][-1],
@@ -160,44 +161,46 @@ def cci(ohlc_data, period: int) -> list:
 """ Classes that hold strategy logic """
 class VolAboveSMA(TAFunctor):
     def __init__(self, bars, events, ta_period:int, order_position: OrderPosition):
-        super().__init__(bars, events, self._func, ta_period, order_position, f"Vol above SMA(Vols, {ta_period})")
+        super().__init__(bars, events, self._func, ta_period, 0, order_position, f"Vol above SMA(Vols, {ta_period})")
         self.ta_period = ta_period
     
     def _func(self, ohlc_data):
-        return ohlc_data["volume"][-1] > talib.SMA(np.array(ohlc_data["volume"]), self.ta_period)[-1]
+        return ohlc_data["volume"][-1] > talib.SMA(np.array(ohlc_data["volume"], dtype="double"), self.ta_period)[-1]
 
 class TAMin(TAFunctor):
-    """ Runs functor (a TA function) and checks that the last value is a min"""
-    def __init__(self, bars, events, ta_func, ta_period: int, order_position: OrderPosition):
-        super().__init__(bars, events, self._func, ta_period, order_position, f"Minimal TA in {ta_period} periods")
+    """ Runs functor (a TA function) and checks that the last value is a min """
+    def __init__(self, bars, events, ta_func, ta_period: int, period:int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, ta_period, period, order_position, f"Minimal TA in {ta_period} periods")
         self.ta_func = ta_func
 
     def _func(self, ohlc_data):
         ta_res = self.ta_func(ohlc_data, self.ta_period)
-        return ta_res[-1] ==  np.amin(ta_res)
+        return ta_res[-1] ==  np.amin(ta_res[-self.period:])
 
 class TAMax(TAFunctor):
-    """ Runs functor (a TA function) and checks that the last value is a min"""
-    def __init__(self, bars, events, ta_func, ta_period: int, order_position: OrderPosition):
-        super().__init__(bars, events, self._func, ta_period, order_position, f"Minimal TA in {ta_period} periods")
+    """ Runs functor (a TA function) and checks that the last value is a max"""
+    def __init__(self, bars, events, ta_func, ta_period: int, period:int, order_position: OrderPosition):
+        super().__init__(bars, events, self._func, ta_period, period, order_position, f"Minimal TA in {ta_period} periods")
         self.ta_func = ta_func
 
     def _func(self, ohlc_data):
         ta_res = self.ta_func(ohlc_data, self.ta_period)
-        return ta_res[-1] ==  np.amax(ta_res)
+        return ta_res[-1] ==  np.amax(ta_res[-self.period:])
 
 class TALessThan(TAFunctor):
     def __init__(self, bars, events, ta_func, ta_period: int, max_val:float, order_position: OrderPosition):
-        super().__init__(bars, events, self._func, ta_period, order_position, f"{ta_func.__name__} less than {max_val}")
+        super().__init__(bars, events, self._func, ta_period, 2, order_position, f"{ta_func.__name__} less than {max_val}")
         self.max_val = max_val
+        self.ta_func = ta_func
 
     def _func(self, ohlc_data):
         return self.ta_func(ohlc_data, self.ta_period)[-1] < self.max_val
 
 class TAMoreThan(TAFunctor):
     def __init__(self, bars, events, ta_func, ta_period: int, min_val:float, order_position: OrderPosition):
-        super().__init__(bars, events, self._func, ta_period, order_position, f"{ta_func.__name__} less than {min_val}")
+        super().__init__(bars, events, self._func, ta_period, 2, order_position, f"{ta_func.__name__} less than {min_val}")
         self.min_val = min_val
+        self.ta_func = ta_func
 
     def _func(self, ohlc_data):
         return self.ta_func(ohlc_data, self.ta_period)[-1] > self.min_val
