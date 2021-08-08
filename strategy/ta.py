@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import talib
 import numpy as np
-from enum import Enum, auto
 from trading.event import SignalEvent
 from trading.strategy.naive import Strategy
 from trading.utilities.enum import OrderPosition
@@ -161,7 +160,7 @@ def cci(ohlc_data, period: int) -> list:
 """ Classes that hold strategy logic """
 class VolAboveSMA(TAFunctor):
     def __init__(self, bars, events, ta_period:int, order_position: OrderPosition):
-        super().__init__(bars, events, self._func, ta_period, 0, order_position, f"Vol above SMA(Vols, {ta_period})")
+        super().__init__(bars, events, self._func, ta_period, 1, order_position, f"Vol above SMA(Vols, {ta_period})")
         self.ta_period = ta_period
     
     def _func(self, ohlc_data):
