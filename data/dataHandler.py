@@ -12,7 +12,7 @@ from pathlib import Path
 from pathos.pools import ProcessPool  # not working on Windows
 import pathos.pools as pools
 
-from trading.utilities.utils import convert_ms_to_timestamp
+from trading.utilities.utils import convert_ms_to_timestamp, daily_date_range
 from trading.event import MarketEvent
 
 NY = 'America/New_York'
@@ -66,6 +66,11 @@ class DataHandler(ABC):
                 fund_hist.index = fund_hist.index.map(
                     lambda x: pd.to_datetime(x, infer_datetime_format=True))
                 self.fundamental_data[sym] = fund_hist.sort_index()
+                if len(self.fundamental_data[sym].index) == 0:
+                    exclude_sym.append(sym)
+                    continue
+                dr = daily_date_range(self.fundamental_data[sym].index[0], self.fundamental_data[sym].index[-1])
+                self.fundamental_data[sym] = self.fundamental_data[sym].reindex(dr, method="pad").fillna(0)
             else:
                 exclude_sym.append(sym)
         log_message(

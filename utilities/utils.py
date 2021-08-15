@@ -8,3 +8,6 @@ def convert_ms_to_timestamp(time_ms: int):
 
 def timestamp_to_ms(ts: pd.Timestamp):
     return int(ts.timestamp() * 1000)
+
+def daily_date_range(start: pd.Timestamp, end: pd.Timestamp):
+    return pd.date_range(start, end)

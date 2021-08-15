@@ -46,18 +46,18 @@ class FundamentalFunctor(FundamentalStrategy, ABC):
         self.description = description
 
     def _calculate_signal(self, sym) -> SignalEvent:
-        idx_date = self._test(sym)
-        if not idx_date:
-            return
-        n_idx_date = self.bars.fundamental_data[sym].index.get_loc(idx_date)
-        if n_idx_date <= self.n:
-            return
-        fundamental_vals = self.bars.fundamental_data[sym].iloc[n_idx_date -
-                                                                self.n: n_idx_date]
-
         latest = self.bars.get_latest_bars(sym)
-        if self.functor(fundamental_vals):
-            return SignalEvent(sym, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)
+        try:
+            n_idx_date = self.bars.fundamental_data[sym].index.get_loc(latest["datetime"][-1])
+        except KeyError:
+            return
+        else:
+            if n_idx_date < self.n:
+                return
+            fundamental_vals = self.bars.fundamental_data[sym].iloc[n_idx_date -
+                                                                    self.n: n_idx_date]
+            if self.functor(fundamental_vals):
+                return SignalEvent(sym, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)
 
     @abstractmethod
     def _func(self, fund_data, fundamental):
