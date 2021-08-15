@@ -8,9 +8,9 @@ from trading.utilities.enum import OrderPosition
 class MultipleStrategy(ABC):
     def order_same_dir(self, strategies: list):
         return all(
-            strat is not None and (strat.signal_type == OrderPosition.BUY or strat.signal_type == OrderPosition.EXIT_SHORT) for strat in strategies
+            [strat is not None and (strat.signal_type == OrderPosition.BUY or strat.signal_type == OrderPosition.EXIT_SHORT) for strat in strategies]
         ) or all(
-            strat is not None and (strat.signal_type == OrderPosition.SELL or strat.signal_type == OrderPosition.EXIT_LONG) for strat in strategies
+            [strat is not None and (strat.signal_type == OrderPosition.SELL or strat.signal_type == OrderPosition.EXIT_LONG) for strat in strategies]
         )
 
     def generate_final_strat(self, strat_list: List[SignalEvent]) -> SignalEvent:
@@ -49,7 +49,7 @@ class MultipleAnyStrategy(Strategy, MultipleStrategy):
         strategies = []
         for strategy in self.strategies:
             strategies.append(strategy._calculate_signal(symbol))
-        if (any(strat is not None for strat in strategies)):
+        if (any([strat is not None for strat in strategies])):
             filtered_strat = [
                 strat for strat in strategies if strat is not None]
             if (self.order_same_dir(filtered_strat)):

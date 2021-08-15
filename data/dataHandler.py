@@ -363,12 +363,9 @@ class TDAData(HistoricCSVDataHandler):
             if os.path.exists(csv_dir / f"{sym}.csv"):
                 price_history = pd.read_csv(
                     csv_dir / f"{sym}.csv", index_col=0).drop_duplicates().sort_index()
-                if self.start_date in price_history.index:
-                    price_history = price_history.iloc[price_history.index.get_loc(
-                        self.start_date):, ]
-                else:
+                if price_history.empty:
                     logging.info(
-                        f"{sym} does not have {self.start_date} in date index, not included")
+                        f"Empty dataframe for {sym}")
                     sym_to_remove.append(sym)
                     continue
                 self.symbol_data[sym] = price_history
@@ -378,7 +375,6 @@ class TDAData(HistoricCSVDataHandler):
                 else:
                     comb_index.union(
                         self.symbol_data[sym].index.drop_duplicates())
-
             else:
                 logging.info(f"Removing {sym}")
                 sym_to_remove.append(sym)
@@ -392,7 +388,6 @@ class TDAData(HistoricCSVDataHandler):
             self.symbol_data[sym]["datetime"] = self.symbol_data[sym].index.values
             self.latest_symbol_data[sym] = self.symbol_data[sym].loc[:, [
                 "datetime", "open", "high", "low", "close", "volume"]].to_dict('records')
-        # self._to_generator()
 
     def get_latest_bars(self, symbol, N=1):
         if symbol in self.latest_symbol_data:

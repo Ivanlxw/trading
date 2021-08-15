@@ -7,6 +7,7 @@ Strategy object take market data as input and produce trading signal events as o
 from abc import ABCMeta, abstractmethod
 
 from trading.event import SignalEvent
+from trading.data.dataHandler import DataHandler
 
 
 class Strategy(object):
@@ -26,8 +27,9 @@ class Strategy(object):
         bars - DataHandler object that provides bar info
         events - event queue object
         """
-        self.bars = bars
+        self.bars : DataHandler = bars
         self.events = events
+        self.description = ""
 
     def put_to_queue_(self, sym, datetime, order_position, price):
         self.events.put(SignalEvent(sym, datetime, order_position, price))
