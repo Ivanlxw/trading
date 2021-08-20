@@ -35,9 +35,9 @@ class SimpleTACross(Strategy):
             return
         TAs = self._get_MA(bars, self.timeperiod)
         if bars['close'][-2] > TAs[-2] and bars['close'][-1] < TAs[-1]:
-            return SignalEvent(symbol, bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])
+            return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
         elif bars[-2] < TAs[-2] and bars[-1] > TAs[-1]:
-            return SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY,  bars['close'][-1])
+            return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY,  bars['close'][-1])]
 
 
 class DoubleMAStrategy(SimpleTACross):
@@ -70,9 +70,9 @@ class DoubleMAStrategy(SimpleTACross):
         long_ma = self._get_MA(bars['close'], self.longer)
         sig = self._cross(short_ma, long_ma)
         if sig == -1:
-            return SignalEvent(symbol, bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])
+            return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
         elif sig == 1:
-            return SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])
+            return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
 
 
 class MeanReversionTA(SimpleTACross):
@@ -91,14 +91,14 @@ class MeanReversionTA(SimpleTACross):
 
     def _exit_ma_cross(self, bars, TAs, boundary):
         if self._break_down(bars['close'], TAs):
-            return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.EXIT_SHORT, bars['close'][-1])
+            return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.EXIT_SHORT, bars['close'][-1])]
         elif self._break_up(bars['close'], TAs):
-            return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.EXIT_SHORT, bars['close'][-1])
+            return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.EXIT_SHORT, bars['close'][-1])]
 
         if (bars['close'][-1] < (TAs[-1] + boundary) and bars['close'][-2] > (TAs[-2] + boundary)):
-            return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])
+            return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
         elif (bars['close'][-1] > (TAs[-1] - boundary) and bars['close'][-2] < (TAs[-2] - boundary)):
-            return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])
+            return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
 
     def _calculate_signal(self, symbol) -> SignalEvent:
         '''
@@ -121,10 +121,10 @@ class MeanReversionTA(SimpleTACross):
 
             if self._break_down(close_prices, TAs) or \
                     (close_prices[-1] < (TAs[-1] + boundary) and close_prices[-2] > (TAs[-2] + boundary)):
-                return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])
+                return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
             elif self._break_up(close_prices, TAs) or \
                     (close_prices[-1] > (TAs[-1] - boundary) and close_prices[-2] < (TAs[-2] - boundary)):
-                return SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])
+                return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
 
 class TAFunctor(Strategy, ABC):
     def __init__(self, bars, events, functor, ta_period:int, period:int, order_position: OrderPosition, description: str):
@@ -140,8 +140,8 @@ class TAFunctor(Strategy, ABC):
         if len(ohlc_data['datetime']) < self.ta_period+self.period:
             return
         if self.functor(ohlc_data):
-            return SignalEvent(ohlc_data['symbol'], ohlc_data['datetime'][-1],
-                    self. order_position, ohlc_data['close'][-1], self.description)
+            return [SignalEvent(ohlc_data['symbol'], ohlc_data['datetime'][-1],
+                    self. order_position, ohlc_data['close'][-1], self.description)]
     
     @abstractmethod
     def _func(self, ohlc_data):

@@ -46,7 +46,7 @@ class NaivePortfolio(Portfolio):
         self.bars = bars
         self.events = events
         self.order_queue = order_queue
-        self.symbol_list = list(self.bars.symbol_data.keys())
+        self.symbol_list = list(self.bars.symbol_data.keys()) if self.bars.symbol_data else self.bars.symbol_list
         if type(self.bars.start_date) == str:
             self.start_date = pd.Timestamp(self.bars.start_date)
         else:
@@ -114,8 +114,7 @@ class NaivePortfolio(Portfolio):
         bars = {}
         for sym in self.symbol_list:
             bars[sym] = self.bars.get_latest_bars(sym, N=1)
-        self.current_holdings['datetime'] = bars[self.symbol_list[0]
-                                                 ]['datetime'][0]
+        self.current_holdings['datetime'] = bars[self.symbol_list[0]]['datetime'][0]
 
         # update holdings based off last trading day
         dh = dict((s, 0) for s in self.symbol_list)

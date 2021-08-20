@@ -2,6 +2,7 @@
   Strategies involving broad markets, either etfs or indexes
 """
 import os
+from typing import List
 import talib
 import numpy as np
 import pandas as pd
@@ -44,7 +45,7 @@ class BroadFunctor(Strategy, BroadMarketStrategy):
 
         self._load_data(broad_sym)
 
-    def _calculate_signal(self, symbol) -> SignalEvent:
+    def _calculate_signal(self, symbol) -> List[SignalEvent]:
         latest = self.bars.get_latest_bars(symbol)
         curr_date = latest['datetime'][-1]
         if curr_date in self.broad_data.index:
@@ -53,7 +54,7 @@ class BroadFunctor(Strategy, BroadMarketStrategy):
                 return
             data = self.broad_data.iloc[date_idx-self.n: date_idx]  # ohlc data
             if self.functor(data):
-                return SignalEvent(symbol, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)
+                return [SignalEvent(symbol, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)]
     
     def describe(self):
         return {

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from abc import ABC, ABCMeta, abstractmethod
-from typing import Optional
+from typing import List, Optional
 
 from trading.data.dataHandler import DataHandler
 from trading.utilities.enum import OrderPosition
@@ -45,7 +45,7 @@ class FundamentalFunctor(FundamentalStrategy, ABC):
         self.order_position = order_position
         self.description = description
 
-    def _calculate_signal(self, sym) -> SignalEvent:
+    def _calculate_signal(self, sym) -> List[SignalEvent]:
         latest = self.bars.get_latest_bars(sym)
         try:
             n_idx_date = self.bars.fundamental_data[sym].index.get_loc(latest["datetime"][-1])
@@ -57,7 +57,7 @@ class FundamentalFunctor(FundamentalStrategy, ABC):
             fundamental_vals = self.bars.fundamental_data[sym].iloc[n_idx_date -
                                                                     self.n: n_idx_date]
             if self.functor(fundamental_vals):
-                return SignalEvent(sym, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)
+                return [SignalEvent(sym, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)]
 
     @abstractmethod
     def _func(self, fund_data, fundamental):
@@ -126,7 +126,7 @@ class LowDCF(FundamentalStrategy):
         self.buy_ratio = buy_ratio
         self.sell_ratio = sell_ratio
 
-    def _calculate_signal(self, sym) -> SignalEvent:
+    def _calculate_signal(self, sym) -> List[SignalEvent]:
         # get most "recent" fundamental data
         idx_date = self._test(sym)
         if not idx_date:
@@ -138,6 +138,6 @@ class LowDCF(FundamentalStrategy):
         dcf_ratio = latest["close"][-1]/dcf_val
         if dcf_ratio < self.buy_ratio:
             # buy
-            return SignalEvent(sym, latest["datetime"][-1], OrderPosition.BUY, latest["close"][-1], f"dcf_ratio: {dcf_ratio}")
+            return [SignalEvent(sym, latest["datetime"][-1], OrderPosition.BUY, latest["close"][-1], f"dcf_ratio: {dcf_ratio}")]
         elif dcf_ratio > self.sell_ratio:
-            return SignalEvent(sym, latest["datetime"][-1], OrderPosition.SELL, latest["close"][-1], f"dcf_ratio: {dcf_ratio}")
+            return [SignalEvent(sym, latest["datetime"][-1], OrderPosition.SELL, latest["close"][-1], f"dcf_ratio: {dcf_ratio}")]

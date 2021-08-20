@@ -5,6 +5,7 @@ Strategy object take market data as input and produce trading signal events as o
 # strategy.py
 
 from abc import ABCMeta, abstractmethod
+from typing import List
 
 from trading.event import SignalEvent
 from trading.data.dataHandler import DataHandler
@@ -34,14 +35,15 @@ class Strategy(object):
     def put_to_queue_(self, sym, datetime, order_position, price):
         self.events.put(SignalEvent(sym, datetime, order_position, price))
 
-    def calculate_signals(self, event) -> list:
+    def calculate_signals(self, event) -> List[SignalEvent]:
         '''
           Returns list(SignalEvents)
         '''
         signals = []
         if event.type == "MARKET":
             for s in self.bars.symbol_data:
-                signals.append(self._calculate_signal(s))
+                sig = self._calculate_signal(s)
+                signals += sig if sig is not None else []
         return signals
 
     @abstractmethod

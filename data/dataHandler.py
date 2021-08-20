@@ -1,5 +1,3 @@
-from backtest.utilities.utils import log_message
-import datetime
 import os
 import re
 import sys
@@ -12,6 +10,7 @@ from pathlib import Path
 from pathos.pools import ProcessPool  # not working on Windows
 import pathos.pools as pools
 
+from backtest.utilities.utils import log_message
 from trading.utilities.utils import convert_ms_to_timestamp, daily_date_range
 from trading.event import MarketEvent
 
@@ -69,8 +68,10 @@ class DataHandler(ABC):
                 if len(self.fundamental_data[sym].index) == 0:
                     exclude_sym.append(sym)
                     continue
-                dr = daily_date_range(self.fundamental_data[sym].index[0], self.fundamental_data[sym].index[-1])
-                self.fundamental_data[sym] = self.fundamental_data[sym].reindex(dr, method="pad").fillna(0)
+                dr = daily_date_range(
+                    self.fundamental_data[sym].index[0], self.fundamental_data[sym].index[-1])
+                self.fundamental_data[sym] = self.fundamental_data[sym].reindex(
+                    dr, method="pad").fillna(0)
             else:
                 exclude_sym.append(sym)
         log_message(
@@ -99,7 +100,7 @@ class HistoricCSVDataHandler(DataHandler):
     """
 
     def __init__(self, events, symbol_list, start_date,
-                 end_date=None, frequency_type="daily"):
+                 end_date=None, frequency_type="daily", live:bool = False):
         """
         Args:
         - Event Queue on which to push MarketEvent information to
@@ -108,7 +109,6 @@ class HistoricCSVDataHandler(DataHandler):
         """
         assert frequency_type in frequency_types
         super().__init__(events, symbol_list, frequency_type, start_date, end_date)
-
         self.start_date_str = start_date
         self.end_date_str = end_date
         self.frequency_type = frequency_type
@@ -117,8 +117,8 @@ class HistoricCSVDataHandler(DataHandler):
         self.continue_backtest = True
         self.data_fields = ['symbol', 'datetime',
                             'open', 'high', 'low', 'close', 'volume']
-
-        self._open_convert_csv_files()
+        if not live:
+            self._open_convert_csv_files()
 
     def _open_convert_csv_files(self):
         comb_index = None
@@ -128,11 +128,11 @@ class HistoricCSVDataHandler(DataHandler):
                 index_col=0,
             ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]) for sym in self.symbol_list]
         else:
-            with ProcessPool(6) as p:
+            with ProcessPool(4) as p:
                 dfs = p.map(lambda s: (s, pd.read_csv(
-                    os.path.join(self.csv_dir, f"{s}.csv"),
-                    index_col=0,
-                ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
+                        os.path.join(self.csv_dir, f"{s}.csv"),
+                        index_col=0,
+                    ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
         dne = []
         for sym, temp_df in dfs:
             if self.start_date in temp_df.index:
@@ -330,17 +330,17 @@ class TDAData(HistoricCSVDataHandler):
                 "Start date has to be string and following format: YYYY-MM-DD")
         assert frequency_type in ["1min", "5min",
                                   "10min", "15min", "30min", "daily"]
+        self.live = live
         super().__init__(events, symbol_list,
-                         start_date, end_date=None, frequency_type="daily")
+                         start_date, end_date=None, frequency_type="daily", live=self.live)
         self.start_date_str = start_date
 
         self.consumer_key = os.environ["TDD_consumer_key"]
-        self.data_fields = ['symbol', 'datetime',
-                            'open', 'high', 'low', 'close', 'volume']
+        self.data_fields = ['open', 'high', 'low', 'close', 'volume']
         self.frequency_type = frequency_type
         self.frequency = frequency
-        self.live = live
         self.continue_backtest = True
+        self.csv_dir = ABSOLUTE_DATA_FP / f"../../Data/data/{self.frequency_type}"
 
     def __copy__(self):
         return TDAData(
@@ -357,32 +357,35 @@ class TDAData(HistoricCSVDataHandler):
         if res.ok:
             print(res.json())
 
+    # to depreciate bc storing data in memory takes too much space
     def _set_symbol_data(self) -> None:
         # get from disk
         sym_to_remove = []
         comb_index = None
-        csv_dir = ABSOLUTE_DATA_FP / \
-            f"../../Data/data/{self.frequency_type}"
         self.symbol_data = {}   # reset symbol_data
-        for sym in self.symbol_list:
-            if os.path.exists(csv_dir / f"{sym}.csv"):
-                price_history = pd.read_csv(
-                    csv_dir / f"{sym}.csv", index_col=0).drop_duplicates().sort_index()
-                if price_history.empty:
-                    logging.info(
-                        f"Empty dataframe for {sym}")
-                    sym_to_remove.append(sym)
-                    continue
-                self.symbol_data[sym] = price_history
-                # combine index to pad forward values
-                if comb_index is None:
-                    comb_index = self.symbol_data[sym].index
-                else:
-                    comb_index.union(
-                        self.symbol_data[sym].index.drop_duplicates())
-            else:
-                logging.info(f"Removing {sym}")
+        if sys.platform.startswith('win'):
+            dfs = [(sym, pd.read_csv(
+                os.path.join(self.csv_dir / f"{sym}.csv"),
+                index_col=0,
+            ).drop_duplicates().sort_index().iloc[:-500,:].loc[:, ["open", "high", "low", "close", "volume"]]) for sym in self.symbol_list]
+        else:
+            with ProcessPool(4) as p:
+                dfs = p.map(lambda s: (s, pd.read_csv(
+                    os.path.join(self.csv_dir / f"{s}.csv"),
+                    index_col=0,
+                ).drop_duplicates().sort_index().iloc[:-500:].loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
+        for sym, price_history in dfs:
+            if price_history.empty:
+                logging.info(f"Empty dataframe for {sym}")
                 sym_to_remove.append(sym)
+                continue
+            self.symbol_data[sym] = price_history
+            # combine index to pad forward values
+            if comb_index is None:
+                comb_index = self.symbol_data[sym].index
+            else:
+                comb_index.union(
+                    self.symbol_data[sym].index.drop_duplicates())
 
         logging.info(f"[_set_symbol_data] Excluded symbols: {sym_to_remove}")
         for sym in self.symbol_data:
@@ -395,18 +398,18 @@ class TDAData(HistoricCSVDataHandler):
                 "datetime", "open", "high", "low", "close", "volume"]].to_dict('records')
 
     def get_latest_bars(self, symbol, N=1):
-        if symbol in self.latest_symbol_data:
-            bar = dict((k, []) for k in self.data_fields)
-            for indi_bar_dict in self.latest_symbol_data[symbol][-N:]:
-                for k in indi_bar_dict.keys():
-                    bar[k] += [indi_bar_dict[k]]
-            bar['symbol'] = symbol
-            return bar
+        if os.path.exists(self.csv_dir / f"{symbol}.csv"):
+            df = pd.read_csv(self.csv_dir / f"{symbol}.csv", index_col=0)
+            if not df.empty:
+                bar = {}
+                for k in self.data_fields:
+                    bar[k] = df[k].iloc[-N:].values
+                bar['symbol'] = symbol
+                bar['datetime'] = [convert_ms_to_timestamp(ms) for ms in df.index.values[-N:]]
+                return bar
 
     def update_bars(self):
-        if self.live:
-            self._set_symbol_data()
-        else:
+        if not self.live:
             super().update_bars()
             return
         self.events.put(MarketEvent())
