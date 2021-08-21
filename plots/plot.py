@@ -39,7 +39,7 @@ class PlotIndividual(Plot):
         self.bars = bars
         self.signals = np.array(
             [[sig.symbol, sig.datetime, sig.price, sig.signal_type] for sig in signals])
-        self.L = min(16, len(self.bars.symbol_data.keys()))
+        self.L = min(16, len(self.bars.symbol_list))
         self.dims = self._get_squared_dims()
 
     def _get_squared_dims(self) -> tuple:

@@ -38,7 +38,10 @@ class SkLearnRegModel(Strategy):
         X = pd.concat([pd.Series(f._formula(ohlc_data), index=ohlc_data['datetime'],
                                  name=f.__class__.__name__) for f in self.features], axis=1)
         if not rebalance:
-            return np.expand_dims(X.iloc[-1], axis=0)
+            incoming_data = X.iloc[-1]
+            if any(incoming_data.isnull()):
+                return
+            return np.expand_dims(incoming_data, axis=0)
         t = self.target._formula(ohlc_data)
         t = np.append(t, [np.nan] * (bars_len - len(t)))
         y = pd.Series(t, index=ohlc_data['datetime'], name="y")
@@ -64,7 +67,7 @@ class SkLearnRegModel(Strategy):
         self._rebalance_data(ohlc_data, ticker)
         try:
             transformed = self._transform_data(ohlc_data, rebalance=False)
-            if ticker in self.reg_map:
+            if ticker in self.reg_map and transformed is not None:
                 pred = self.reg_map[ticker].predict(transformed)
             else:
                 return
@@ -101,7 +104,10 @@ class SkLearnRegModelNormalized(SkLearnRegModel):
         X = pd.concat([pd.Series(f._formula(ohlc_data), index=ohlc_data['datetime'],
                                  name=f.__class__.__name__) for f in self.features], axis=1)
         if not rebalance:
-            return self.scaler_map[ohlc_data['symbol']].transform(np.expand_dims(X.iloc[-1], axis=0))
+            incoming_data = X.iloc[-1]
+            if any(incoming_data.isnull()):
+                return
+            return self.scaler_map[ohlc_data['symbol']].transform(np.expand_dims(incoming_data, axis=0))
         t = self.target._formula(ohlc_data)
         t = np.append(t, [np.nan] * (bars_len - len(t)))
         y = pd.Series(t, index=ohlc_data['datetime'], name="y")
