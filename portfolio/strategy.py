@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from math import fabs
 from typing import List, Optional
+from alpaca_trade_api.entity import Order
 import pandas as pd
 from trading.data.dataHandler import DataHandler
 
@@ -31,13 +32,12 @@ class DefaultOrder(PortfolioStrategy):
         of signal.quantity=signal.quantity of such an asset
         """
         assert signal.quantity > 0
-        order = None
         symbol = signal.symbol
         direction = signal.signal_type
         latest_snapshot = self.bars.get_latest_bars(signal.symbol)
 
         cur_quantity = self.current_holdings[symbol]["quantity"]
-
+        order = None
         if direction == OrderPosition.EXIT_LONG:
             if cur_quantity > 0:
                 order = OrderEvent(
@@ -46,15 +46,12 @@ class DefaultOrder(PortfolioStrategy):
             if cur_quantity < 0:
                 order = OrderEvent(
                     symbol, latest_snapshot['datetime'][-1], -cur_quantity, OrderPosition.BUY, self.order_type, signal.price)
-        elif direction == OrderPosition.BUY and cur_quantity <= 0:
+        else:
             order = OrderEvent(
-                symbol, latest_snapshot['datetime'][-1], signal.quantity-cur_quantity, direction, self.order_type, signal.price)
-        elif direction == OrderPosition.SELL and cur_quantity >= 0:
-            order = OrderEvent(
-                symbol, latest_snapshot['datetime'][-1], signal.quantity+cur_quantity, direction, self.order_type, signal.price)
+                symbol, latest_snapshot['datetime'][-1], signal.quantity, direction, self.order_type, signal.price)
         if order is not None:
             order.signal_price = signal.price
-        return [order]
+            return [order]
 
 
 class ProgressiveOrder(PortfolioStrategy):
@@ -119,9 +116,7 @@ class LongOnly(PortfolioStrategy):
                                self.current_holdings[symbol]["quantity"], OrderPosition.SELL, self.order_type, signal.price)
         if order is not None:
             order.signal_price = signal.price
-        return [order]
-
-# TODO: Needs work
+            return [order]
 
 
 class SellLowestPerforming(PortfolioStrategy):
@@ -131,16 +126,15 @@ class SellLowestPerforming(PortfolioStrategy):
         return pd.Timedelta(today-last_traded_date).days
 
     def signal_least_performing(self):
+        """ Lowest performing LONG position """
         min = ("", 10000)
         for sym in self.bars.symbol_data:
             latest_snapshot = self.bars.get_latest_bars(sym)
             last_traded_price = self.current_holdings[sym]["last_trade_price"]
-            if last_traded_price is None or self.current_holdings[sym]["quantity"] == 0:
+            if last_traded_price is None or self.current_holdings[sym]["quantity"] <= 0:
                 continue
             perc_change = (latest_snapshot["close"][-1] - last_traded_price) / \
                 last_traded_price
-            if self.current_holdings[sym]["quantity"] < 0:
-                perc_change *= -1
             if perc_change < min[1]:
                 min = (sym, perc_change)
         return min[0]
@@ -156,7 +150,7 @@ class SellLowestPerforming(PortfolioStrategy):
                 return [OrderEvent(signal.symbol, latest_snapshot['datetime'][-1],
                                    signal.quantity, signal.signal_type, self.order_type, price=signal.price)]
             sym = self.signal_least_performing()
-            if sym != "":
+            if self.current_holdings[sym]["quantity"] < 0 and sym != "":
                 return [
                     OrderEvent(sym, latest_snapshot['datetime'][-1],
                                fabs(self.current_holdings[sym]["quantity"]), direction=OrderPosition.SELL, order_type=OrderType.MARKET, price=signal.price),
@@ -183,3 +177,4 @@ class SellLowestPerforming(PortfolioStrategy):
         else:  # OrderPosition.SELL
             return [OrderEvent(signal.symbol, latest_snapshot['datetime'][-1],
                                signal.quantity, signal.signal_type, self.order_type, price=signal.price)]
+        return []

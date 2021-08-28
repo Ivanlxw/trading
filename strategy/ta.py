@@ -18,10 +18,6 @@ class SimpleTACross(Strategy):
         self.timeperiod = timeperiod
         self.ma_type = ma_type
 
-    def _get_MA(self, bars, timeperiod):
-        close_prices = np.array([tup for tup in bars])
-        return self.ma_type(close_prices, timeperiod)
-
     def _break_up(self, bars: list, TAs: list) -> bool:
         return bars[-2] < TAs[-2] and bars[-1] > TAs[-1]
 
@@ -31,12 +27,12 @@ class SimpleTACross(Strategy):
     def _calculate_signal(self, symbol) -> SignalEvent:
         bars = self.bars.get_latest_bars(
             symbol, N=(self.timeperiod+3))  # list of tuples
-        if len(bars) != self.timeperiod+3:
+        if len(bars['datetime']) != self.timeperiod+3:
             return
-        TAs = self._get_MA(bars, self.timeperiod)
+        TAs = self.ma_type(bars, self.timeperiod)
         if bars['close'][-2] > TAs[-2] and bars['close'][-1] < TAs[-1]:
             return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
-        elif bars[-2] < TAs[-2] and bars[-1] > TAs[-1]:
+        elif bars['close'][-2] < TAs[-2] and bars['close'][-1] > TAs[-1]:
             return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY,  bars['close'][-1])]
 
 
@@ -66,8 +62,8 @@ class DoubleMAStrategy(SimpleTACross):
             symbol, N=(self.longer+3))  # list of tuples
         if len(bars['datetime']) < self.longer+3:
             return
-        short_ma = self._get_MA(bars['close'], self.shorter)
-        long_ma = self._get_MA(bars['close'], self.longer)
+        short_ma = self.ma_type(bars, self.shorter)
+        long_ma = self.ma_type(bars, self.longer)
         sig = self._cross(short_ma, long_ma)
         if sig == -1:
             return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]

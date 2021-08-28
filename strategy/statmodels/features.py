@@ -8,8 +8,9 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 
-from trading.utilities.utils import daily_date_range, timestamp_to_ms
+from trading.utilities.utils import daily_date_range
 from trading.data.dataHandler import DataHandler
+from trading.strategy.statmodels.targets import _ema
 
 FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / "Data/data/fundamental/quarterly"
 
@@ -77,3 +78,10 @@ class QuarterlyFundamental(Features):
             return pd.Series(fund_d.values, index=ohlc_data["datetime"], name=self.fundamental)
         except KeyError:
             return pd.Series(0, index=ohlc_data["datetime"], name=self.fundamental)
+
+class DiffFromEMA(Features):
+    def __init__(self, period: int) -> None:
+        self.period = period
+
+    def _formula(self, ohlc_data):
+        return pd.Series([last-ema for last, ema in zip(ohlc_data["close"], _ema(ohlc_data["close"], self.period))], index=ohlc_data["datetime"], name="CloseDiffFromEMA")

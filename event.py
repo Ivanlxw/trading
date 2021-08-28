@@ -66,7 +66,8 @@ class OrderEvent(Event):
         """
 
         assert quantity > 0
-        assert (direction == OrderPosition.BUY or direction == OrderPosition.SELL)
+        if not (direction == OrderPosition.BUY or direction == OrderPosition.SELL):
+            raise AssertionError(f"Direction is not BUY or SELL: {direction}")
         self.type = 'ORDER'
         self.symbol = symbol
         self.date = date

@@ -109,9 +109,9 @@ def above_sma(bars, events, broad_sym, n: int, order_position: OrderPosition):
     return BroadFunctor(bars, events, broad_sym, below_sma, n+2, order_position, description=f"above_sma: {broad_sym} above SMA")
 
 
-def low_extrema(bars, events, broad_sym, n: int, percentile: int):
+def low_extrema(bars, events, broad_sym, n: int, percentile: int, order_position: OrderPosition):
     def n_extrema(data): return _EXTREMA(data, percentile)
-    return BroadFunctor(bars, events, broad_sym, n_extrema, n, OrderPosition.BUY, description=f"low_extrema: {broad_sym} near percentile: {percentile}")
+    return BroadFunctor(bars, events, broad_sym, n_extrema, n, order_position, description=f"low_extrema: {broad_sym} near percentile: {percentile}")
 
 
 def low_cci(bars, events, broad_sym, n: int, order_position: OrderPosition):

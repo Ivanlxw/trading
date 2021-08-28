@@ -147,7 +147,8 @@ class NaivePortfolio(Portfolio):
         self.current_holdings[fill.order_event.symbol]['last_trade_price'] = fill.order_event.trade_price
         self.current_holdings['commission'] += fill.commission
         self.current_holdings['cash'] -= (cash + fill.commission)
-        assert self.current_holdings["cash"] > 0
+        if self.current_holdings["cash"] < 0:
+            raise AssertionError(f"Cash < 0: {self.current_holdings['cash']}")
 
     def update_fill(self, event):
         if event.type == "FILL":
