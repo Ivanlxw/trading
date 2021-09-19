@@ -11,6 +11,7 @@ from typing import List
 from trading.event import SignalEvent
 from trading.data.dataHandler import DataHandler
 
+
 class Strategy(object):
     """
     Strategy is an abstract base class providing an interface for
@@ -22,15 +23,15 @@ class Strategy(object):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, bars, events):
+    def __init__(self, bars, events, description: str = ""):
         """
         Args:
         bars - DataHandler object that provides bar info
         events - event queue object
         """
-        self.bars : DataHandler = bars
+        self.bars: DataHandler = bars
         self.events = events
-        self.description = ""
+        self.description = description
 
     def put_to_queue_(self, sym, datetime, order_position, price):
         self.events.put(SignalEvent(sym, datetime, order_position, price))
@@ -41,7 +42,7 @@ class Strategy(object):
         '''
         signals = []
         if event.type == "MARKET":
-            for s in self.bars.symbol_data:
+            for s in self.bars.symbol_list:
                 sig = self._calculate_signal(s)
                 signals += sig if sig is not None else []
         return signals
@@ -50,12 +51,13 @@ class Strategy(object):
     def _calculate_signal(self, ticker) -> SignalEvent:
         raise NotImplementedError(
             "Need to implement underlying strategy logic:")
-    
+
     def describe(self):
         """ Return all variables minus bars and events """
         return {
-            f"{self.__class__.__name__}" : str(self.__dict__)
+            f"{self.__class__.__name__}": str(self.__dict__)
         }
+
 
 class BuyAndHoldStrategy(Strategy):
     """
@@ -81,6 +83,6 @@ class BuyAndHoldStrategy(Strategy):
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
         if not self.bought[symbol]:
             bars = self.bars.get_latest_bars(symbol, N=1)
-            if bars is not None and bars != []:  # there's an entry
+            if bars is not None and len(bars['datetime']) > 0:  # there's an entry
                 self.bought[symbol] = True
                 return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]

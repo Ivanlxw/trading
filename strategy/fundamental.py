@@ -17,15 +17,14 @@ FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / "Data/data/fundamental/qu
 class FundamentalStrategy(Strategy):
     __metaclass__ = ABCMeta
 
-    def __init__(self, bars: DataHandler, events) -> None:
-        self.bars = bars
-        self.events = events
+    def __init__(self, bars: DataHandler, events, description="") -> None:
+        super().__init__(bars, events, description)
         if self.bars.fundamental_data is None:
             self.bars.get_historical_fundamentals()
 
     def _relevant_qtr(self, sym: str) -> Optional[pd.Timestamp]:
         curr_date = pd.to_datetime(
-            self.bars.latest_symbol_data[sym][-1]["datetime"])
+            self.bars.latest_symbol_data[sym][-1]["datetime"])  # latest_symbol_data will be empty for live
         fund_data_before: list = list(
             filter(lambda x: x <= curr_date, self.bars.fundamental_data[sym].index))
         if len(fund_data_before) != 0:
@@ -49,12 +48,11 @@ class FundamentalFunctor(FundamentalStrategy, ABC):
     '''
 
     def __init__(self, bars: DataHandler, events, functor, fundamental: str, n: int, order_position: OrderPosition, description: str = "") -> None:
-        super().__init__(bars, events)
+        super().__init__(bars, events, description)
         self.n = n
         self.functor = functor
         self.fundamental = fundamental
         self.order_position = order_position
-        self.description = description
 
     def _calculate_signal(self, sym) -> List[SignalEvent]:
         latest = self.bars.get_latest_bars(sym)
@@ -139,7 +137,7 @@ class FundAtMost(FundamentalFunctor):
 
 class LowDCF(FundamentalStrategy):
     def __init__(self, bars: DataHandler, events,  buy_ratio, sell_ratio) -> None:
-        super().__init__(bars, events)
+        super().__init__(bars, events, f"LowDCF: buy_ratio={buy_ratio}, sell_ratio={sell_ratio}")
         self.buy_ratio = buy_ratio
         self.sell_ratio = sell_ratio
 

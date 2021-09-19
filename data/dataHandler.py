@@ -33,11 +33,14 @@ class DataHandler(ABC):
     system will be treated identically by the rest of the backtesting suite.
     """
 
-    def __init__(self, events, symbol_list, frequency_type, start_date: str, end_date: str = None):
+    def __init__(self, events, symbol_list, frequency_type, start_date: str = None, end_date: str = None):
         self.events = events
         self.symbol_list = symbol_list
-        self.start_date = pd.to_datetime(
-            start_date, infer_datetime_format=True).value // 10 ** 6  # milliseconds
+        if start_date is None:
+            self.start_date = None
+        else:
+            self.start_date = pd.to_datetime(
+                start_date, infer_datetime_format=True).value // 10 ** 6  # milliseconds
         if end_date != None:
             self.end_date = pd.to_datetime(
                 end_date, infer_datetime_format=True).value // 10 ** 6
@@ -45,6 +48,7 @@ class DataHandler(ABC):
             self.end_date = None
 
         self.csv_dir = ABSOLUTE_DATA_FP / f"../../Data/data/{frequency_type}"
+        assert self.csv_dir.is_dir()
 
         self.fmp_api_key = os.environ["FMP_API"]
         self.fundamental_data = None
@@ -95,7 +99,7 @@ class HistoricCSVDataHandler(DataHandler):
     obtain "latest" bar similar to live trading (drip feed)
     """
 
-    def __init__(self, events, symbol_list, start_date,
+    def __init__(self, events, symbol_list, start_date=None,
                  end_date=None, frequency_type="daily", live:bool = False):
         """
         Args:
@@ -109,7 +113,7 @@ class HistoricCSVDataHandler(DataHandler):
         self.end_date_str = end_date
         self.frequency_type = frequency_type
         self.symbol_data = {}
-        self.latest_symbol_data = {}
+        self.latest_symbol_data = dict((s, []) for s in self.symbol_list)
         self.continue_backtest = True
         self.data_fields = ['symbol', 'datetime',
                             'open', 'high', 'low', 'close', 'volume']
@@ -131,7 +135,9 @@ class HistoricCSVDataHandler(DataHandler):
                     ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
         dne = []
         for sym, temp_df in dfs:
-            if self.start_date in temp_df.index:
+            if self.start_date is None:
+                filtered = temp_df
+            elif self.start_date in temp_df.index:
                 filtered = temp_df.iloc[temp_df.index.get_loc(
                     self.start_date):, ]
             else:
@@ -158,7 +164,6 @@ class HistoricCSVDataHandler(DataHandler):
             else:
                 comb_index.union(self.symbol_data[sym].index.drop_duplicates())
 
-            self.latest_symbol_data[sym] = []
         logging.info(f"[_open_convert_csv_files] Excluded symbols: {dne}")
         # reindex
         for s in self.symbol_data:
@@ -166,6 +171,7 @@ class HistoricCSVDataHandler(DataHandler):
                 index=comb_index, method='pad', fill_value=0)
             self.symbol_data[s].index = self.symbol_data[s].index.map(
                 convert_ms_to_timestamp)
+        print(self.symbol_data[self.symbol_list[0]].shape)
         self._to_generator()
 
     def __copy__(self):
@@ -214,7 +220,7 @@ class HistoricCSVDataHandler(DataHandler):
 
 class TDAData(HistoricCSVDataHandler):
     def __init__(self, events, symbol_list, start_date: str,
-                 frequency_type="daily", frequency=1, live=True) -> None:
+                 frequency_type="daily", frequency=1, live=False) -> None:
         if type(start_date) != str and re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start_date):
             raise Exception(
                 "Start date has to be string and following format: YYYY-MM-DD")
@@ -302,4 +308,9 @@ class TDAData(HistoricCSVDataHandler):
         if not self.live:
             super().update_bars()
             return
+        for s in self.symbol_list:
+            if os.path.exists(self.csv_dir / f"{s}.csv"):
+                df = pd.read_csv(self.csv_dir / f"{s}.csv", index_col=0)
+                if not df.empty:
+                    self.latest_symbol_data[s].append(self.get_latest_bars(s))
         self.events.put(MarketEvent())

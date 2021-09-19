@@ -13,7 +13,7 @@ from trading.utilities.enum import OrderPosition
 
 class RelativeExtrema(Strategy):
     def __init__(self, bars, events, long_time, consecutive=2, percentile: int = 10, strat_contrarian: bool = True) -> None:
-        super().__init__(bars, events)
+        super().__init__(bars, events, f"RelativeExtrema: long={long_time}, percentile={percentile}")
         self.lt = long_time
         self.consecutive = consecutive
         self.counter = 0
@@ -44,7 +44,7 @@ class RelativeExtrema(Strategy):
 
 class ExtremaBounce(Strategy):
     def __init__(self, bars, events, short_period: int, long_period: int, percentile: int = 25) -> None:
-        super().__init__(bars, events)
+        super().__init__(bars, events, f"Extremabounce: short={short_period}, long={long_period}, percentile={percentile}")
         self.short_period = short_period
         self.long_period = long_period
         self.percentile = percentile
@@ -54,9 +54,9 @@ class ExtremaBounce(Strategy):
         if len(bars_list["datetime"]) < self.long_period:
             return
         if bars_list["close"][-1] < np.percentile(bars_list["close"], self.percentile) and bars_list["close"][-1] == max(bars_list["close"][-self.short_period:]):
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1])]
+            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], self.description)]
         elif bars_list["close"][-1] > np.percentile(bars_list["close"], 100-self.percentile) and bars_list["close"][-1] == min(bars_list["close"][-self.short_period:]):
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1])]
+            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], self.description)]
 
 
 class LongTermCorrTrend(Strategy):
@@ -90,5 +90,3 @@ class LongTermCorrTrend(Strategy):
             else:
                 order_posn = OrderPosition.SELL
             return [SignalEvent(ticker, bars_list["datetime"][-1], order_posn, bars_list["close"][-1], f"Corr: {corr}")]
-
-

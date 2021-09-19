@@ -65,8 +65,7 @@ class NaivePortfolio(Portfolio):
         self.order_type = order_type
         self.portfolio_strategy = portfolio_strategy(
             self.bars, self.current_holdings, order_type)
-        self.rebalance = rebalance(
-            self.events, self.bars, self.current_holdings) if rebalance is not None else NoRebalance(self.events, self.bars, self.current_holdings)
+        self.rebalance = rebalance if rebalance is not None else NoRebalance(self.events, self.bars)
 
     def construct_all_holdings(self,):
         """

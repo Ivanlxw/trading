@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import logging
 import talib
 import numpy as np
 from trading.event import SignalEvent
@@ -11,10 +12,9 @@ class SimpleTACross(Strategy):
     Buy/Sell when it crosses the smoothed line (SMA, etc.)
     '''
 
-    def __init__(self, bars, events, timeperiod: int, ma_type):
-        self.bars = bars  # barshandler
+    def __init__(self, bars, events, timeperiod: int, ma_type, description=""):
+        super().__init__(bars, events, description)
         self.symbol_list = self.bars.symbol_list
-        self.events = events
         self.timeperiod = timeperiod
         self.ma_type = ma_type
 
@@ -38,7 +38,7 @@ class SimpleTACross(Strategy):
 
 class DoubleMAStrategy(SimpleTACross):
     def __init__(self, bars, events, timeperiods, ma_type):
-        super().__init__(bars, events, 0, ma_type)
+        super().__init__(bars, events, 0, ma_type, f"DoubleMAStrategy: timeperiods={str(timeperiods)}, ma_type={ma_type.__name__}")
         if len(timeperiods) != 2:
             raise Exception("Time periods have to be a list/tuple of length 2")
         self.shorter = min(timeperiods)
@@ -81,7 +81,7 @@ class MeanReversionTA(SimpleTACross):
     '''
 
     def __init__(self, bars, events, timeperiod: int, ma_type, sd: float = 2, exit: bool = True):
-        super().__init__(bars, events, timeperiod, ma_type)
+        super().__init__(bars, events, timeperiod, ma_type, f"MeanReversionTA: ma_type={ma_type.__name__}, sd={sd}, exit_ma_cross={exit}")
         self.sd_multiplier = sd
         self.exit = exit
 
@@ -107,14 +107,13 @@ class MeanReversionTA(SimpleTACross):
         if len(bars['datetime']) < self.timeperiod+3:
             return
         if 'close' in bars:
-            close_prices = bars['close']
-            TAs = self._get_MA(close_prices, self.timeperiod)
+            TAs = self.ma_type(bars, self.timeperiod)
             sd_TA = np.std(TAs[-self.timeperiod:])
             boundary = sd_TA*self.sd_multiplier
 
             if self.exit:
                 return self._exit_ma_cross(bars, TAs, boundary)
-
+            close_prices = bars['close']
             if self._break_down(close_prices, TAs) or \
                     (close_prices[-1] < (TAs[-1] + boundary) and close_prices[-2] > (TAs[-2] + boundary)):
                 return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
@@ -124,10 +123,9 @@ class MeanReversionTA(SimpleTACross):
 
 class TAFunctor(Strategy, ABC):
     def __init__(self, bars, events, functor, ta_period:int, period:int, order_position: OrderPosition, description: str):
-        super().__init__(bars, events)
+        super().__init__(bars, events, description)
         self.functor = functor
         self.order_position = order_position
-        self.description = description 
         self.ta_period = ta_period
         self.period = period
     

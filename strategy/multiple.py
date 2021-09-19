@@ -8,8 +8,8 @@ from trading.utilities.enum import OrderPosition
 
 
 class MultipleStrategy(Strategy, ABC):
-    def __init__(self, bars, events, strategies: List[Strategy]) -> None:
-        super().__init__(bars, events)
+    def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
+        super().__init__(bars, events, description)
         self.strategies = strategies
 
     def order_same_dir(self, strategies: list):
@@ -21,15 +21,15 @@ class MultipleStrategy(Strategy, ABC):
 
     def generate_final_strat(self, strat_list: List[SignalEvent]) -> List[SignalEvent]:
         final_strat = copy.deepcopy(strat_list)[0]
-        final_strat.other_details = ""
+        final_strat.other_details = self.description + ":\n"
         for strat in strat_list:
             final_strat.other_details += strat.other_details + "\n"
         return [final_strat]
 
 
 class MultipleAllStrategy(MultipleStrategy):
-    def __init__(self, bars, events, strategies: List[Strategy]) -> None:
-        super().__init__(bars, events, strategies)
+    def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
+        super().__init__(bars, events, strategies, description)
 
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
         strategies = []
@@ -49,8 +49,8 @@ class MultipleAllStrategy(MultipleStrategy):
 
 
 class MultipleAnyStrategy(MultipleStrategy):
-    def __init__(self, bars, events, strategies: List[Strategy]) -> None:
-        super().__init__(bars, events, strategies)
+    def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
+        super().__init__(bars, events, strategies, description)
 
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
         strategies = []

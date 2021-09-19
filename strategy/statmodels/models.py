@@ -52,7 +52,7 @@ class SkLearnRegModel(Strategy):
 
     def _rebalance_data(self, ohlc_data, sym):
         # replace curr_holdings with ohlc_data. Works the same
-        if self.rebalance_cond.need_rebalance({"datetime": ohlc_data["datetime"][-1]}) or self.live:
+        if self.rebalance_cond.need_rebalance({"datetime": ohlc_data["datetime"][-1]}): #  or self.live
             ohlc_data = self.bars.get_latest_bars(sym, 500)
             if len(ohlc_data["datetime"]) < 50:
                 return
@@ -97,7 +97,7 @@ class SkLearnRegModelNormalized(SkLearnRegModel):
         super().__init__(bars, event_queue, reg, features, target,
                          rebalance_cond, order_val, n_history, freq, live, **kwargs)
         self.scaler_map = dict((sym, StandardScaler())
-                               for sym in self.bars.symbol_data)
+                               for sym in self.bars.symbol_list)
 
     def _transform_data(self, ohlc_data, rebalance=False):
         bars_len = len(ohlc_data['datetime'])
