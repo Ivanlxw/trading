@@ -14,7 +14,7 @@ from backtest.performance import create_sharpe_ratio, create_drawdowns
 from trading.portfolio.rebalance import NoRebalance
 from trading.utilities.utils import convert_ms_to_timestamp
 from backtest.utilities.utils import log_message
-from Data.DataWriter import ABSOLUTE_BT_DATA_DIR
+from Data.DataWriters.Prices import ABSOLUTE_BT_DATA_DIR
 
 class Portfolio(object):
     __metaclass__ = ABCMeta

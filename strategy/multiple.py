@@ -23,7 +23,7 @@ class MultipleStrategy(Strategy, ABC):
         final_strat = copy.deepcopy(strat_list)[0]
         final_strat.other_details = self.description + ":\n"
         for strat in strat_list:
-            final_strat.other_details += strat.other_details + "\n"
+            final_strat.other_details += f"{strat.other_details} \n"
         return [final_strat]
 
 

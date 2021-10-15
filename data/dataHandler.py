@@ -171,7 +171,6 @@ class HistoricCSVDataHandler(DataHandler):
                 index=comb_index, method='pad', fill_value=0)
             self.symbol_data[s].index = self.symbol_data[s].index.map(
                 convert_ms_to_timestamp)
-        print(self.symbol_data[self.symbol_list[0]].shape)
         self._to_generator()
 
     def __copy__(self):
@@ -219,35 +218,34 @@ class HistoricCSVDataHandler(DataHandler):
         self.events.put(MarketEvent())
 
 class TDAData(HistoricCSVDataHandler):
+    """ Takes in data from FMP API but uses TDA API for quotes """
     def __init__(self, events, symbol_list, start_date: str,
-                 frequency_type="daily", frequency=1, live=False) -> None:
+                 frequency_type="daily", live=False) -> None:
         if type(start_date) != str and re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start_date):
             raise Exception(
                 "Start date has to be string and following format: YYYY-MM-DD")
         assert frequency_type in ["1min", "5min",
                                   "10min", "15min", "30min", "daily"]
-        self.live = live
         super().__init__(events, symbol_list,
-                         start_date, end_date=None, frequency_type="daily", live=self.live)
+                         start_date, end_date=None, frequency_type="daily", live=live)
         self.start_date_str = start_date
+        self.live = live
 
-        self.consumer_key = os.environ["TDD_consumer_key"]
         self.data_fields = ['open', 'high', 'low', 'close', 'volume']
         self.frequency_type = frequency_type
-        self.frequency = frequency
         self.continue_backtest = True
         self.csv_dir = ABSOLUTE_DATA_FP / f"../../Data/data/{self.frequency_type}"
 
     def __copy__(self):
         return TDAData(
-            self.events, self.symbol_list, self.start_date_str, self.frequency_type, self.frequency, self.live
+            self.events, self.symbol_list, self.start_date_str, self.frequency_type, self.live
         )
 
     def _get_quote(self, ticker):
         res = requests.get(
             f"https://api.tdameritrade.com/v1/marketdata/{ticker}/quotes",
             params={
-                "apikey": self.consumer_key,
+                "apikey": os.environ["TDD_consumer_key"],
             },
         )
         if res.ok:
