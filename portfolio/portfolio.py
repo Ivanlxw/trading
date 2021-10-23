@@ -61,7 +61,7 @@ class NaivePortfolio(Portfolio):
             self._setup_holdings_from_json(ABSOLUTE_BT_DATA_DIR / f"portfolio/{portfolio_name}.json")
         else:
             self.current_holdings = self.construct_current_holdings()
-            self.all_holdings = self.construct_all_holdings()
+        self.all_holdings = self.construct_all_holdings()
         self.order_type = order_type
         self.portfolio_strategy = portfolio_strategy(
             self.bars, self.current_holdings, order_type)
@@ -106,8 +106,6 @@ class NaivePortfolio(Portfolio):
             elif isinstance(self.current_holdings[f], dict) and "last_trade_date" in self.current_holdings[f]:
                 if self.current_holdings[f]["last_trade_date"] is not None:
                     self.current_holdings[f]["last_trade_date"] = convert_ms_to_timestamp(self.current_holdings[f]["last_trade_date"])
-
-        self.all_holdings = self.construct_all_holdings()
 
     def update_timeindex(self):
         bars = {}
@@ -204,17 +202,36 @@ class NaivePortfolio(Portfolio):
             raise Exception("Error: equity_curve is not initialized.")
         self.equity_curve.to_csv(fp)
     
-    def write_curr_holdings(self):
-        for f in self.current_holdings:
+    def _convert_holdings_to_json_writable(self, holding):
+        for f in holding:
             if f == "datetime":
-                self.current_holdings["datetime"] = int(self.current_holdings["datetime"].timestamp() * 1000)
-            elif isinstance(self.current_holdings[f], dict) and "last_trade_date" in self.current_holdings[f]:
-                if self.current_holdings[f]["last_trade_date"] is not None:
-                    self.current_holdings[f]["last_trade_date"] = int(self.current_holdings[f]["last_trade_date"].timestamp() * 1000)
-        curr_holdings_fp = ABSOLUTE_BT_DATA_DIR / f"portfolio/{self.name}.json"
+                holding["datetime"] = int(holding["datetime"].timestamp() * 1000)
+            elif isinstance(holding[f], dict) and "last_trade_date" in holding[f] and holding[f]["last_trade_date"] is not None:
+                holding[f]["last_trade_date"] = int(holding[f]["last_trade_date"].timestamp() * 1000)
+        return holding
+        
+
+    def write_curr_holdings(self):
+        curr_holdings_fp = ABSOLUTE_BT_DATA_DIR / f"portfolio/cur_holdings/{self.name}.json"
         with open(curr_holdings_fp, 'w') as fout:
             fout.write(json.dumps(self.current_holdings))
         log_message(f"Written curr_holdings result to {curr_holdings_fp}")
+    
+    def write_all_holdings(self):
+        # write curr holdings & all_holdings, for evaluation of strategy in future
+        self.current_holdings = self._convert_holdings_to_json_writable(self.current_holdings)
+        self.write_curr_holdings()
+
+        # writes a list of dict as json -- used in future for potential pnl evaluation    
+        for idx, single_holding in enumerate(self.all_holdings):
+            self.all_holdings[idx] = self._convert_holdings_to_json_writable(single_holding)
+        all_holdings_fp = ABSOLUTE_BT_DATA_DIR / f"portfolio/all_holdings/{self.name}.json"
+        self.all_holdings.append(self.current_holdings)
+        if not os.path.exists(all_holdings_fp):
+            all_holdings_fp.touch()
+        with open(all_holdings_fp, 'w') as fout:
+            json.dump(self.all_holdings, fout)
+        log_message(f"Written all_holdings to {all_holdings_fp}")
 
 
 

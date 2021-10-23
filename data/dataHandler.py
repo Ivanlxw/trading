@@ -8,7 +8,6 @@ import pandas as pd
 from abc import ABC, abstractmethod
 from pathlib import Path
 from pathos.pools import ProcessPool  # not working on Windows
-import pathos.pools as pools
 
 from backtest.utilities.utils import log_message
 from trading.utilities.utils import convert_ms_to_timestamp, daily_date_range
@@ -294,7 +293,12 @@ class TDAData(HistoricCSVDataHandler):
     def get_latest_bars(self, symbol, N=1):
         if os.path.exists(self.csv_dir / f"{symbol}.csv"):
             df = pd.read_csv(self.csv_dir / f"{symbol}.csv", index_col=0)
-            if not df.empty:
+            if df.empty:
+                os.remove(self.csv_dir / f"{symbol}.csv")
+                self.symbol_list.remove(symbol)
+                log_message(f"{self.csv_dir / {symbol}}.csv removed as it was empty")
+                return
+            else:
                 bar = {}
                 for k in self.data_fields:
                     bar[k] = df[k].iloc[-N:].values
@@ -306,9 +310,8 @@ class TDAData(HistoricCSVDataHandler):
         if not self.live:
             super().update_bars()
             return
+        log_message("reading prices from disk")
         for s in self.symbol_list:
-            if os.path.exists(self.csv_dir / f"{s}.csv"):
-                df = pd.read_csv(self.csv_dir / f"{s}.csv", index_col=0)
-                if not df.empty:
-                    self.latest_symbol_data[s].append(self.get_latest_bars(s))
+            if b := self.get_latest_bars(s) is not None:
+                self.latest_symbol_data[s].append(b)
         self.events.put(MarketEvent())
