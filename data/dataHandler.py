@@ -312,6 +312,7 @@ class TDAData(HistoricCSVDataHandler):
             return
         log_message("reading prices from disk")
         for s in self.symbol_list:
-            if b := self.get_latest_bars(s) is not None:
+            b = self.get_latest_bars(s)
+            if b is not None:
                 self.latest_symbol_data[s].append(b)
         self.events.put(MarketEvent())
