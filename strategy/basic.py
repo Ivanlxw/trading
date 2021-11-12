@@ -1,6 +1,6 @@
 from typing import List
 from trading.utilities.enum import OrderPosition
-from trading.strategy.naive import Strategy
+from trading.strategy.base import Strategy
 from trading.event import SignalEvent
 
 

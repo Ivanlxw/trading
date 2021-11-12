@@ -7,7 +7,7 @@ import scipy.stats as stats
 import pandas as pd
 
 from trading.event import SignalEvent
-from trading.strategy.naive import Strategy
+from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 
 

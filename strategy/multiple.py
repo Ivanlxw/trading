@@ -3,7 +3,7 @@ from typing import List
 import copy
 
 from trading.event import MarketEvent, SignalEvent
-from trading.strategy.naive import Strategy
+from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 
 
@@ -14,9 +14,9 @@ class MultipleStrategy(Strategy, ABC):
 
     def order_same_dir(self, strategies: list):
         return all(
-            [strat is not None and (strat.signal_type == OrderPosition.BUY or strat.signal_type == OrderPosition.EXIT_SHORT) for strat in strategies]
+            [strat is not None and (strat.order_position == OrderPosition.BUY or strat.order_position == OrderPosition.EXIT_SHORT) for strat in strategies]
         ) or all(
-            [strat is not None and (strat.signal_type == OrderPosition.SELL or strat.signal_type == OrderPosition.EXIT_LONG) for strat in strategies]
+            [strat is not None and (strat.order_position == OrderPosition.SELL or strat.order_position == OrderPosition.EXIT_LONG) for strat in strategies]
         )
 
     def generate_final_strat(self, strat_list: List[SignalEvent]) -> List[SignalEvent]:
@@ -40,6 +40,7 @@ class MultipleAllStrategy(MultipleStrategy):
             strategies += sig
         if self.order_same_dir(strategies):
             return self.generate_final_strat(strategies)
+        return []
     
     def describe(self) -> dict:
         return {
@@ -61,6 +62,7 @@ class MultipleAnyStrategy(MultipleStrategy):
             strategies += sig
         if len(strategies) != 0 and self.order_same_dir(strategies):
             return self.generate_final_strat(strategies)
+        return []
     
     def describe(self) -> dict:
         return {
@@ -80,8 +82,7 @@ class MultipleSendAllStrategy(MultipleStrategy):
             if sig is None:
                 continue
             strategies += sig
-        if len(strategies) != 0:
-            return strategies
+        return strategies    
     
     def describe(self) -> dict:
         return {

@@ -47,10 +47,7 @@ class NaivePortfolio(Portfolio):
         self.events = events
         self.order_queue = order_queue
         self.symbol_list = list(self.bars.symbol_data.keys()) if self.bars.symbol_data else self.bars.symbol_list
-        if type(self.bars.start_date) == str:
-            self.start_date = pd.Timestamp(self.bars.start_date)
-        else:
-            self.start_date = self.bars.start_date
+        self.start_date = pd.Timestamp(self.bars.start_date, unit="ms")
         self.initial_capital = initial_capital
         self.qty = stock_size
         self.expires = expires
@@ -213,13 +210,13 @@ class NaivePortfolio(Portfolio):
 
     def write_curr_holdings(self):
         curr_holdings_fp = ABSOLUTE_BT_DATA_DIR / f"portfolio/cur_holdings/{self.name}.json"
+        self.current_holdings = self._convert_holdings_to_json_writable(self.current_holdings)
         with open(curr_holdings_fp, 'w') as fout:
             fout.write(json.dumps(self.current_holdings))
         log_message(f"Written curr_holdings result to {curr_holdings_fp}")
     
     def write_all_holdings(self):
         # write curr holdings & all_holdings, for evaluation of strategy in future
-        self.current_holdings = self._convert_holdings_to_json_writable(self.current_holdings)
         self.write_curr_holdings()
 
         # writes a list of dict as json -- used in future for potential pnl evaluation    

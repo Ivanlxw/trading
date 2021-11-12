@@ -3,7 +3,8 @@ Strategy object take market data as input and produce trading signal events as o
 """
 
 # strategy.py
-
+import warnings
+import queue
 from abc import ABCMeta, abstractmethod
 from trading.utilities.enum import OrderPosition
 from typing import List
@@ -23,7 +24,7 @@ class Strategy(object):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, bars, events, description: str = ""):
+    def __init__(self, bars: DataHandler, events: queue.Queue, description: str = ""):
         """
         Args:
         bars - DataHandler object that provides bar info
@@ -34,6 +35,7 @@ class Strategy(object):
         self.description = description
 
     def put_to_queue_(self, sym, datetime, order_position, price):
+        warnings.warn("Should not be used anymore", DeprecationWarning)
         self.events.put(SignalEvent(sym, datetime, order_position, price))
 
     def calculate_signals(self, event) -> List[SignalEvent]:
@@ -48,7 +50,7 @@ class Strategy(object):
         return signals
 
     @abstractmethod
-    def _calculate_signal(self, ticker) -> SignalEvent:
+    def _calculate_signal(self, ticker) -> List[SignalEvent]:
         raise NotImplementedError(
             "Need to implement underlying strategy logic:")
 

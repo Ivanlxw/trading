@@ -33,7 +33,7 @@ class DefaultOrder(PortfolioStrategy):
         """
         assert signal.quantity > 0
         symbol = signal.symbol
-        direction = signal.signal_type
+        direction = signal.order_position
         latest_snapshot = self.bars.get_latest_bars(signal.symbol)
 
         cur_quantity = self.current_holdings[symbol]["quantity"]
@@ -63,7 +63,7 @@ class ProgressiveOrder(PortfolioStrategy):
         assert signal.quantity > 0
         order = None
         symbol = signal.symbol
-        direction = signal.signal_type
+        direction = signal.order_position
         latest_snapshot = self.bars.get_latest_bars(signal.symbol)
 
         cur_quantity = self.current_holdings[symbol]["quantity"]
@@ -95,7 +95,7 @@ class ProgressiveOrder(PortfolioStrategy):
         return [order]
 
 
-class LongOnly(PortfolioStrategy):
+class NoShort(PortfolioStrategy):
     def _filter_order_to_send(self, signal: SignalEvent) -> List[OrderEvent]:
         """
         takes a signal, short=exit
@@ -104,7 +104,7 @@ class LongOnly(PortfolioStrategy):
         assert signal.quantity > 0
         order = None
         symbol = signal.symbol
-        direction = signal.signal_type
+        direction = signal.order_position
         latest_snapshot = self.bars.get_latest_bars(signal.symbol)
 
         if direction == OrderPosition.BUY or direction == OrderPosition.EXIT_SHORT:
@@ -144,11 +144,11 @@ class SellLowestPerforming(PortfolioStrategy):
         latest_snapshot = self.bars.get_latest_bars(
             signal.symbol)
         market_value = latest_snapshot["close"][-1] * signal.quantity * \
-            (-1 if signal.signal_type == OrderPosition.SELL else 1)
-        if signal.signal_type == OrderPosition.BUY:
+            (-1 if signal.order_position == OrderPosition.SELL else 1)
+        if signal.order_position == OrderPosition.BUY:
             if market_value < self.current_holdings["cash"]:
                 return [OrderEvent(signal.symbol, latest_snapshot['datetime'][-1],
-                                   signal.quantity, signal.signal_type, self.order_type, price=signal.price)]
+                                   signal.quantity, signal.order_position, self.order_type, price=signal.price)]
             sym = self.signal_least_performing()
             if self.current_holdings[sym]["quantity"] < 0 and sym != "":
                 return [
@@ -157,7 +157,7 @@ class SellLowestPerforming(PortfolioStrategy):
                     OrderEvent(signal.symbol, latest_snapshot['datetime'][-1],
                                signal.quantity, direction=OrderPosition.BUY, order_type=self.order_type, price=signal.price)
                 ]
-        elif signal.signal_type == OrderPosition.EXIT_SHORT:
+        elif signal.order_position == OrderPosition.EXIT_SHORT:
             if self.current_holdings[signal.symbol]["quantity"] < 0:
                 if market_value < self.current_holdings["cash"]:
                     return [OrderEvent(signal.symbol, latest_snapshot['datetime'][-1],
@@ -170,11 +170,11 @@ class SellLowestPerforming(PortfolioStrategy):
                         OrderEvent(signal.symbol, latest_snapshot['datetime'][-1],
                                    fabs(self.current_holdings[signal.symbol]["quantity"]), OrderPosition.BUY, self.order_type, price=signal.price),
                     ]
-        elif signal.signal_type == OrderPosition.EXIT_LONG:
+        elif signal.order_position == OrderPosition.EXIT_LONG:
             if self.current_holdings[signal.symbol]["quantity"] > 0:
                 return [OrderEvent(signal.symbol, latest_snapshot['datetime'][-1],
                                    fabs(self.current_holdings[signal.symbol]["quantity"]), OrderPosition.SELL, self.order_type, price=signal.price)]
         else:  # OrderPosition.SELL
             return [OrderEvent(signal.symbol, latest_snapshot['datetime'][-1],
-                               signal.quantity, signal.signal_type, self.order_type, price=signal.price)]
+                               signal.quantity, signal.order_position, self.order_type, price=signal.price)]
         return []

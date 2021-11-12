@@ -38,8 +38,8 @@ class PlotIndividual(Plot):
         plt.figure(num=None, figsize=(12, 7), facecolor='w', edgecolor='k')
         self.bars = bars
         self.signals = np.array(
-            [[sig.symbol, sig.datetime, sig.price, sig.signal_type] for sig in signals])
-        self.L = min(16, len(self.bars.symbol_list))
+            [[sig.symbol, sig.datetime, sig.price, sig.order_position] for sig in signals])
+        self.L = min(16, len(self.bars.symbol_data.keys()))
         self.dims = self._get_squared_dims()
 
     def _get_squared_dims(self) -> tuple:

@@ -36,19 +36,19 @@ class SignalEvent(Event):
     The SignalEvents are utilised by the Portfolio object as advice for how to trade.
     """
 
-    def __init__(self, symbol, datetime, signal_type: OrderPosition, price: float, other_details: str = ""):
+    def __init__(self, symbol, datetime, order_position: OrderPosition, price: float, other_details: str = ""):
         # SignalEvent('GOOG', timestamp, OrderPosition.LONG)    # timestamp can be a string or the big numbers
         self.type = 'SIGNAL'
         self.symbol = symbol
         self.datetime = datetime
-        self.signal_type = signal_type
+        self.order_position = order_position
         self.price = price
         self.quantity = None
         self.other_details = other_details
 
     def details(self):
         date_str = self.datetime.strftime("%Y/%m/%d")
-        return f"Symbol: {self.symbol}\nDate:{date_str}\nPrice:{self.price}\nDirection:{self.signal_type}\n[DETAILS] {self.other_details}"
+        return f"Symbol: {self.symbol}\nDate:{date_str}\nPrice:{self.price}\nDirection:{self.order_position}\n[DETAILS] {self.other_details}"
 
 
 class OrderEvent(Event):

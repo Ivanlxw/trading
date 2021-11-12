@@ -10,7 +10,7 @@ from abc import ABC
 from pathlib import Path
 
 from trading.event import SignalEvent
-from trading.strategy.naive import Strategy
+from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 from trading.utilities.utils import convert_ms_to_timestamp
 

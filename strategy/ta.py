@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 import logging
+from typing import List
 import talib
 import numpy as np
 from trading.event import SignalEvent
-from trading.strategy.naive import Strategy
+from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 
 
@@ -129,10 +130,10 @@ class TAFunctor(Strategy, ABC):
         self.ta_period = ta_period
         self.period = period
     
-    def _calculate_signal(self, ticker) -> SignalEvent:
+    def _calculate_signal(self, ticker) -> List[SignalEvent]:
         ohlc_data = self.bars.get_latest_bars(ticker, self.ta_period+self.period)
         if len(ohlc_data['datetime']) < self.ta_period+self.period:
-            return
+            return []
         if self.functor(ohlc_data):
             return [SignalEvent(ohlc_data['symbol'], ohlc_data['datetime'][-1],
                     self. order_position, ohlc_data['close'][-1], self.description)]

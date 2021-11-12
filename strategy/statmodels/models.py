@@ -4,7 +4,7 @@ from sklearn.exceptions import NotFittedError
 from sklearn.preprocessing import StandardScaler
 
 from trading.portfolio.rebalance import Rebalance
-from trading.strategy.naive import Strategy
+from trading.strategy.base import Strategy
 from trading.event import SignalEvent
 from trading.utilities.enum import OrderPosition
 

@@ -9,7 +9,7 @@ from typing import List, Optional
 from trading.data.dataHandler import DataHandler
 from trading.utilities.enum import OrderPosition
 from trading.event import SignalEvent
-from trading.strategy.naive import Strategy
+from trading.strategy.base import Strategy
 
 
 FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / "Data/data/fundamental/quarterly"
@@ -23,8 +23,12 @@ class FundamentalStrategy(Strategy):
             self.bars.get_historical_fundamentals()
 
     def _relevant_qtr(self, sym: str) -> Optional[pd.Timestamp]:
-        curr_date = pd.to_datetime(
-            self.bars.latest_symbol_data[sym][-1]["datetime"])  # latest_symbol_data will be empty for live
+        try:
+            curr_date = pd.to_datetime(
+                self.bars.latest_symbol_data[sym][-1]["datetime"])  # latest_symbol_data will be empty for live
+        except Exception as e:
+            print(self.bars.latest_symbol_data[sym])
+            raise Exception(f"[{sym}]: {e}")
         fund_data_before: list = list(
             filter(lambda x: x <= curr_date, self.bars.fundamental_data[sym].index))
         if len(fund_data_before) != 0:
@@ -55,10 +59,12 @@ class FundamentalFunctor(FundamentalStrategy, ABC):
         self.order_position = order_position
 
     def _calculate_signal(self, sym) -> List[SignalEvent]:
+        if sym not in self.bars.fundamental_data.keys():
+            return []
         latest = self.bars.get_latest_bars(sym)
         fund_data = self.get_fundamental_data(sym)
         if fund_data is None:
-            return
+            return []
         if self.functor(fund_data):
             return [SignalEvent(sym, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)]
 
