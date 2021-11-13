@@ -43,7 +43,6 @@ class SignalEvent(Event):
         self.datetime = datetime
         self.order_position = order_position
         self.price = price
-        self.quantity = None
         self.other_details = other_details
 
     def details(self):

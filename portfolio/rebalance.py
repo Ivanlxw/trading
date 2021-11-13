@@ -7,15 +7,9 @@ from trading.event import SignalEvent
 
 
 class Rebalance(metaclass=ABCMeta):
-    def __init__(self, bars: DataHandler, events) -> None:
+    def __init__(self, bars: DataHandler, event_queue) -> None:
         self.bars = bars
-        self.events = events
-
-    def need_rebalance(self, _):
-        """
-        The check for rebalancing portfolio
-        """
-        raise NotImplementedError("Should implement need_rebalance()")
+        self.event_queue = event_queue
 
     @abstractmethod
     def rebalance(self, stock_list, current_holdings):
@@ -71,10 +65,10 @@ class RebalanceYearly(Rebalance):
             for symbol in stock_list:
                 latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
                 if current_holdings[symbol]['quantity'] > 0:
-                    self.events.put(SignalEvent(
+                    self.event_queue.put(SignalEvent(
                         symbol, current_holdings['datetime'], OrderPosition.EXIT_LONG, latest_close_price))
                 elif current_holdings[symbol]['quantity'] < 0:
-                    self.events.put(SignalEvent(
+                    self.event_queue.put(SignalEvent(
                         symbol, current_holdings['datetime'], OrderPosition.EXIT_SHORT, latest_close_price))
 
 
@@ -118,10 +112,10 @@ class SellLosers(metaclass=ABCMeta):
                 # sell all losers
                 latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
                 if current_holdings[symbol]["quantity"] > 0 and latest_close_price * 0.95 < current_holdings[symbol]["last_trade_price"]:
-                    self.events.put(SignalEvent(
+                    self.event_queue.put(SignalEvent(
                         symbol, current_holdings['datetime'], OrderPosition.EXIT_LONG, latest_close_price))
                 elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * 0.95 > current_holdings[symbol]["last_trade_price"]:
-                    self.events.put(SignalEvent(
+                    self.event_queue.put(SignalEvent(
                         symbol, current_holdings['datetime'], OrderPosition.EXIT_SHORT, latest_close_price))
 
 
@@ -157,5 +151,49 @@ class ExitShortMonthly(Rebalance):
             for symbol in stock_list:
                 if current_holdings[symbol]["quantity"] < 0:
                     latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
-                    self.events.put(SignalEvent(
+                    self.event_queue.put(SignalEvent(
                         symbol, current_holdings['datetime'], OrderPosition.EXIT_SHORT, latest_close_price))
+
+class StopLossThreshold(Rebalance):
+    ''' Exits a position when losses exceeds specified threshold. Checks daily '''
+
+    def __init__(self, bars: DataHandler, event_queue, threshold) -> None:
+        super().__init__(bars, event_queue)
+        self.threshold = threshold
+    
+    def rebalance(self, stock_list, current_holdings) -> None:
+        for symbol in stock_list:
+            last_trade_price = current_holdings[symbol]["last_trade_price"]
+            if last_trade_price is None:
+                continue
+            curr_qty = current_holdings[symbol]["quantity"]
+            latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
+            gains_ratio = latest_close_price / last_trade_price
+            if curr_qty < 0 and gains_ratio > 1 + self.threshold:
+                signal = SignalEvent(symbol, current_holdings['datetime'], OrderPosition.EXIT_SHORT, latest_close_price)
+                self.event_queue.put(signal)
+            elif curr_qty > 0 and gains_ratio < 1 - self.threshold:
+                self.event_queue.put(SignalEvent(
+                    symbol, current_holdings['datetime'], OrderPosition.EXIT_LONG, latest_close_price))
+
+class TakeProfitThreshold(Rebalance):
+    ''' Exits a position when losses exceeds specified threshold. Checks daily '''
+
+    def __init__(self, bars: DataHandler, event_queue, threshold) -> None:
+        super().__init__(bars, event_queue)
+        self.threshold = threshold
+    
+    def rebalance(self, stock_list, current_holdings) -> None:
+        for symbol in stock_list:
+            last_trade_price = current_holdings[symbol]["last_trade_price"]
+            if last_trade_price is None:
+                continue
+            curr_qty = current_holdings[symbol]["quantity"]
+            latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
+            gains_ratio = latest_close_price / last_trade_price
+            if curr_qty < 0 and gains_ratio < 1 - self.threshold:
+                self.event_queue.put(SignalEvent(
+                    symbol, current_holdings['datetime'], OrderPosition.EXIT_SHORT, latest_close_price))
+            elif curr_qty > 0 and gains_ratio > 1 + self.threshold:
+                self.event_queue.put(SignalEvent(
+                    symbol, current_holdings['datetime'], OrderPosition.EXIT_LONG, latest_close_price))

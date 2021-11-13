@@ -137,7 +137,6 @@ class NaivePortfolio(Portfolio):
         self.current_holdings[fill.order_event.symbol]['last_trade_date'] = fill.order_event.date
         self.current_holdings[fill.order_event.symbol]["quantity"] += fill_dir * \
             fill.order_event.quantity
-        # latest trade price. Might need to change to avg trade price
         self.current_holdings[fill.order_event.symbol]['last_trade_price'] = fill.order_event.trade_price
         self.current_holdings['commission'] += fill.commission
         self.current_holdings['cash'] -= (cash + fill.commission)
@@ -149,8 +148,7 @@ class NaivePortfolio(Portfolio):
             self.update_holdings_from_fill(event)
 
     def generate_order(self, signal: SignalEvent) -> List[OrderEvent]:
-        signal.quantity = self.qty
-        return self.portfolio_strategy._filter_order_to_send(signal)
+        return self.portfolio_strategy._filter_order_to_send(signal, self.qty)
 
     def _put_to_event(self, order_list):
         for order in order_list:
@@ -255,5 +253,4 @@ class PercentagePortFolio(NaivePortfolio):
             else int(fabs(self.all_holdings[-1]["total"]) * self.perc / latest_snapshot['close'][-1])
         if size <= 0:
             return
-        signal.quantity = size
-        return self.portfolio_strategy._filter_order_to_send(signal)
+        return self.portfolio_strategy._filter_order_to_send(signal, size)
