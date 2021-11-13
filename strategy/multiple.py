@@ -38,7 +38,7 @@ class MultipleAllStrategy(MultipleStrategy):
             if sig is None:
                 return
             strategies += sig
-        if self.order_same_dir(strategies):
+        if len(strategies) > 0 and self.order_same_dir(strategies):
             return self.generate_final_strat(strategies)
         return []
     

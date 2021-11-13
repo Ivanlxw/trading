@@ -70,7 +70,7 @@ class LongTermCorrTrend(Strategy):
         self.contrarian = strat_contrarian
         self.corr_cap = corr
 
-    def _calculate_signal(self, ticker) -> List[SignalEvent]:
+    def _calculate_signal(self, ticker) -> SignalEvent:
         bars_list = self.bars.get_latest_bars(ticker, N=self.period)
         if len(bars_list['datetime']) != self.period:
             return
@@ -90,3 +90,22 @@ class LongTermCorrTrend(Strategy):
             else:
                 order_posn = OrderPosition.SELL
             return [SignalEvent(ticker, bars_list["datetime"][-1], order_posn, bars_list["close"][-1], f"Corr: {corr}")]
+
+class Upside(Strategy):
+    """
+        Upside = max(close_price_series) / close_price_series[-1] - 1 * 100%
+        Always returns a signal with OrderPosition.BUY
+    """
+
+    def __init__(self, bars, events, period, upside: float):
+        super().__init__(bars, events)
+        self.period = period
+        self.upside = upside
+
+    def _calculate_signal(self, ticker) -> SignalEvent:
+        bars_list = self.get_bars(ticker)
+        if bars_list is None:
+            return
+        upside = (max(bars_list['close']) / bars_list['close'][-1]) * 100
+        if upside > self.upside:
+            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"Upside: {upside}")]

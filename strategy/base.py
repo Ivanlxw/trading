@@ -33,6 +33,7 @@ class Strategy(object):
         self.bars: DataHandler = bars
         self.events = events
         self.description = description
+        self.period = None
 
     def put_to_queue_(self, sym, datetime, order_position, price):
         warnings.warn("Should not be used anymore", DeprecationWarning)
@@ -53,6 +54,12 @@ class Strategy(object):
     def _calculate_signal(self, ticker) -> List[SignalEvent]:
         raise NotImplementedError(
             "Need to implement underlying strategy logic:")
+
+    def get_bars(self, ticker):
+        bars_list = self.bars.get_latest_bars(ticker, N=self.period)
+        if len(bars_list['datetime']) != self.period:
+            return
+        return bars_list
 
     def describe(self):
         """ Return all variables minus bars and events """

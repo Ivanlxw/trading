@@ -23,7 +23,12 @@ class FundamentalStrategy(Strategy):
             self.bars.get_historical_fundamentals()
 
     def _relevant_qtr(self, sym: str) -> Optional[pd.Timestamp]:
+        if sym not in self.bars.fundamental_data.keys():
+            return
         try:
+            bars_list = self.bars.latest_symbol_data[sym]
+            if len(bars_list) == 0:
+                return
             curr_date = pd.to_datetime(
                 self.bars.latest_symbol_data[sym][-1]["datetime"])  # latest_symbol_data will be empty for live
         except Exception as e:
@@ -141,19 +146,20 @@ class FundAtMost(FundamentalFunctor):
         return at_most(fund_data, self.fundamental, self.max_val)
 
 
-class LowDCF(FundamentalStrategy):
+class DCFSignal(FundamentalStrategy):
     def __init__(self, bars: DataHandler, events,  buy_ratio, sell_ratio) -> None:
-        super().__init__(bars, events, f"LowDCF: buy_ratio={buy_ratio}, sell_ratio={sell_ratio}")
+        super().__init__(bars, events, f"DCFSignal: buy_ratio={buy_ratio}, sell_ratio={sell_ratio}")
         self.buy_ratio = buy_ratio
         self.sell_ratio = sell_ratio
 
     def _calculate_signal(self, sym) -> List[SignalEvent]:
         # get most "recent" fundamental data
         idx_date = self._relevant_qtr(sym)
-        if not idx_date:
+        if not idx_date or sym not in self.bars.fundamental_data.keys():
             return
         dcf_val = self.bars.fundamental_data[sym].loc[idx_date, "dcf"]
-
+        if dcf_val == 0 or np.isnan(dcf_val):
+            return
         # curr price
         latest = self.bars.get_latest_bars(sym)
         dcf_ratio = latest["close"][-1]/dcf_val
