@@ -216,7 +216,7 @@ class HistoricCSVDataHandler(DataHandler):
                     self.latest_symbol_data[s].append(bar)
         self.events.put(MarketEvent())
 
-class TDAData(HistoricCSVDataHandler):
+class DataFromDisk(HistoricCSVDataHandler):
     """ Takes in data from FMP API but uses TDA API for quotes """
     def __init__(self, events, symbol_list, start_date: str,
                  frequency_type="daily", live=False) -> None:
@@ -236,11 +236,12 @@ class TDAData(HistoricCSVDataHandler):
         self.csv_dir = ABSOLUTE_DATA_FP / f"../../Data/data/{self.frequency_type}"
 
     def __copy__(self):
-        return TDAData(
+        return DataFromDisk(
             self.events, self.symbol_list, self.start_date_str, self.frequency_type, self.live
         )
 
     def _get_quote(self, ticker):
+        # depreciated: TDA's quote API call
         res = requests.get(
             f"https://api.tdameritrade.com/v1/marketdata/{ticker}/quotes",
             params={
@@ -292,19 +293,22 @@ class TDAData(HistoricCSVDataHandler):
 
     def get_latest_bars(self, symbol, N=1):
         if os.path.exists(self.csv_dir / f"{symbol}.csv"):
-            df = pd.read_csv(self.csv_dir / f"{symbol}.csv", index_col=0)
-            if df.empty:
-                os.remove(self.csv_dir / f"{symbol}.csv")
-                self.symbol_list.remove(symbol)
-                log_message(f"{self.csv_dir / {symbol}}.csv removed as it was empty")
-                return
-            else:
-                bar = {}
-                for k in self.data_fields:
-                    bar[k] = df[k].iloc[-N:].values
-                bar['symbol'] = symbol
-                bar['datetime'] = [convert_ms_to_timestamp(ms) for ms in df.index.values[-N:]]
-                return bar
+            try:
+                df = pd.read_csv(self.csv_dir / f"{symbol}.csv", index_col=0)
+                if df.empty:
+                    os.remove(self.csv_dir / f"{symbol}.csv")
+                    self.symbol_list.remove(symbol)
+                    log_message(f"{self.csv_dir / {symbol}}.csv removed as it was empty")
+                    return
+                else:
+                    bar = {}
+                    for k in self.data_fields:
+                        bar[k] = df[k].iloc[-N:].values
+                    bar['symbol'] = symbol
+                    bar['datetime'] = [convert_ms_to_timestamp(ms) for ms in df.index.values[-N:]]
+                    return bar
+            except Exception as e:
+                raise RuntimeError(f"{self.csv_dir / f'{symbol}.csv'} exists but err: {e}")
 
     def update_bars(self):
         if not self.live:

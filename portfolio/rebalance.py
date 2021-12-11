@@ -159,12 +159,13 @@ class StopLossThreshold(Rebalance):
 
     def __init__(self, bars: DataHandler, event_queue, threshold) -> None:
         super().__init__(bars, event_queue)
+        assert threshold < 1, "threshold value should be < 1"
         self.threshold = threshold
     
     def rebalance(self, stock_list, current_holdings) -> None:
         for symbol in stock_list:
             last_trade_price = current_holdings[symbol]["last_trade_price"]
-            if last_trade_price is None:
+            if last_trade_price is None or current_holdings[symbol]["quantity"] == 0:
                 continue
             curr_qty = current_holdings[symbol]["quantity"]
             latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]

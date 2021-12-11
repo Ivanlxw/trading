@@ -1,10 +1,7 @@
-from abc import ABCMeta, abstractmethod
-import logging
 from typing import List
 import talib
 import numpy as np
 import scipy.stats as stats
-import pandas as pd
 
 from trading.event import SignalEvent
 from trading.strategy.base import Strategy
@@ -91,21 +88,24 @@ class LongTermCorrTrend(Strategy):
                 order_posn = OrderPosition.SELL
             return [SignalEvent(ticker, bars_list["datetime"][-1], order_posn, bars_list["close"][-1], f"Corr: {corr}")]
 
-class Upside(Strategy):
+class EitherSide(Strategy):
     """
-        Upside = max(close_price_series) / close_price_series[-1] - 1 * 100%
+        EitherSide = max(close_price_series) / close_price_series[-1] - 1 * 100%
         Always returns a signal with OrderPosition.BUY
     """
 
-    def __init__(self, bars, events, period, upside: float):
+    def __init__(self, bars, events, period, side: float):
         super().__init__(bars, events)
         self.period = period
-        self.upside = upside
+        assert side > 0, "side cannot be <= 0"
+        self.side = side
 
     def _calculate_signal(self, ticker) -> SignalEvent:
         bars_list = self.get_bars(ticker)
         if bars_list is None:
             return
-        upside = (max(bars_list['close']) / bars_list['close'][-1]) * 100
-        if upside > self.upside:
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"Upside: {upside}")]
+        side = (max(bars_list['close']) / bars_list['close'][-1] - 1) * 100
+        if side > self.side:
+            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"Upside: {side}")]
+        elif side < -self.side:
+            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], f"Downside: {side}")]

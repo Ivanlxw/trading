@@ -72,8 +72,8 @@ class MultipleAnyStrategy(MultipleStrategy):
 
 class MultipleSendAllStrategy(MultipleStrategy):
     """ Sends ALL strategies - save space holding dataframes in memory when running live"""    
-    def __init__(self, bars, events, strategies: List[Strategy]) -> None:
-        super().__init__(bars, events, strategies)
+    def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
+        super().__init__(bars, events, strategies, description)
     
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
         strategies = []
