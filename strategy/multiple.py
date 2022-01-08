@@ -14,9 +14,9 @@ class MultipleStrategy(Strategy, ABC):
 
     def order_same_dir(self, strategies: list):
         return all(
-            [strat is not None and (strat.order_position == OrderPosition.BUY or strat.order_position == OrderPosition.EXIT_SHORT) for strat in strategies]
+            [strat is not None and strat.order_position == OrderPosition.BUY for strat in strategies]
         ) or all(
-            [strat is not None and (strat.order_position == OrderPosition.SELL or strat.order_position == OrderPosition.EXIT_LONG) for strat in strategies]
+            [strat is not None and strat.order_position == OrderPosition.SELL for strat in strategies]
         )
 
     def generate_final_strat(self, strat_list: List[SignalEvent]) -> List[SignalEvent]:

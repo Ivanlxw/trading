@@ -88,9 +88,9 @@ class MeanReversionTA(SimpleTACross):
 
     def _exit_ma_cross(self, bars, TAs, boundary):
         if self._break_down(bars['close'], TAs):
-            return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.EXIT_SHORT, bars['close'][-1])]
+            return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
         elif self._break_up(bars['close'], TAs):
-            return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.EXIT_SHORT, bars['close'][-1])]
+            return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
 
         if (bars['close'][-1] < (TAs[-1] + boundary) and bars['close'][-2] > (TAs[-2] + boundary)):
             return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]

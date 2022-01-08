@@ -6,5 +6,3 @@ class OrderType(Enum):
 class OrderPosition(Enum):
     BUY = auto()
     SELL = auto()
-    EXIT_LONG = auto()
-    EXIT_SHORT = auto()
