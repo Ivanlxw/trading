@@ -3,8 +3,6 @@ import json
 import os
 from math import fabs
 from pathlib import Path
-from typing import List
-from trading.portfolio.strategy import DefaultOrder
 from trading.utilities.enum import OrderPosition, OrderType
 import numpy as np
 import pandas as pd
@@ -37,8 +35,7 @@ class Portfolio(object):
 
 class NaivePortfolio(Portfolio):
     def __init__(self, bars, events, order_queue, stock_size, portfolio_name,
-                 initial_capital=100000.0, order_type=OrderType.LIMIT, portfolio_strategy=DefaultOrder,
-                 rebalance=None, expires: int = 1, ):
+                 initial_capital=100000.0, order_type=OrderType.LIMIT, rebalance=None, expires: int = 1, ):
         """
         Parameters:
         bars - The DataHandler object with current market data.
@@ -66,8 +63,6 @@ class NaivePortfolio(Portfolio):
         assert isinstance(self.current_holdings, dict)
         self.all_holdings = self.construct_all_holdings()
         self.order_type = order_type
-        self.portfolio_strategy = portfolio_strategy(
-            self.bars, self.current_holdings, order_type)
         self.rebalance = rebalance if rebalance is not None else NoRebalance(
             self.events, self.bars)
 
@@ -109,11 +104,13 @@ class NaivePortfolio(Portfolio):
             self.current_holdings = json.load(fin)
         for f in self.current_holdings:
             if f == "datetime":
-                assert isinstance(self.current_holdings["datetime"], int), "read last_trade_date is not int"
+                assert isinstance(
+                    self.current_holdings["datetime"], int), "read last_trade_date is not int"
                 self.current_holdings["datetime"] = convert_ms_to_timestamp(
                     self.current_holdings["datetime"])
             elif isinstance(self.current_holdings[f], dict) and "last_trade_date" in self.current_holdings[f] and self.current_holdings[f]["last_trade_date"] is not None:
-                assert isinstance(self.current_holdings[f]["last_trade_date"], int), "read last_trade_date is not int"
+                assert isinstance(
+                    self.current_holdings[f]["last_trade_date"], int), "read last_trade_date is not int"
                 self.current_holdings[f]["last_trade_date"] = convert_ms_to_timestamp(
                     self.current_holdings[f]["last_trade_date"])
 
@@ -150,7 +147,8 @@ class NaivePortfolio(Portfolio):
         self.current_holdings[fill.order_event.symbol]['last_trade_date'] = fill.order_event.date
         self.current_holdings[fill.order_event.symbol]["quantity"] += fill_dir * \
             fill.order_event.quantity
-        assert self.current_holdings[fill.order_event.symbol]["quantity"] >= 0, f"{fill.order_event.symbol}'s current pos: {self.current_holdings[fill.order_event.symbol]['quantity']}"
+        # assert self.current_holdings[fill.order_event.symbol][
+        #     "quantity"] >= 0, f"{fill.order_event.symbol}'s current pos: {self.current_holdings[fill.order_event.symbol]['quantity']}"
         self.current_holdings[fill.order_event.symbol]['last_trade_price'] = fill.order_event.trade_price
         self.current_holdings['commission'] += fill.commission
         self.current_holdings['cash'] -= (cash + fill.commission)
@@ -161,21 +159,20 @@ class NaivePortfolio(Portfolio):
         if event.type == "FILL":
             self.update_holdings_from_fill(event)
 
-    def generate_order(self, signal: SignalEvent) -> List[OrderEvent]:
-        return self.portfolio_strategy._filter_order_to_send(signal, self.qty)
+    def generate_order(self, signal: SignalEvent) -> OrderEvent:
+        return OrderEvent(signal.symbol, signal.datetime, self.qty, signal.order_position, self.order_type, signal.price)
 
-    def _put_to_event(self, order_list):
-        for order in order_list:
-            if order is not None:
-                if self.order_type == OrderType.LIMIT:
-                    order.expires = order.date + timedelta(days=self.expires)
-                self.events.put(order)
-
+    def _put_to_event(self, order: OrderEvent):
+        assert order is not None, "[_put_to_event]: Order is None"
+        if self.order_type == OrderType.LIMIT:
+            order.expires = order.date + timedelta(days=self.expires)
+        self.events.put(order)
+                
     def update_signal(self, event):
         if event.type == 'SIGNAL':
-            order_list = self.generate_order(event)  # list of OrderEvent
-            if order_list is not None:
-                self._put_to_event(order_list)
+            order = self.generate_order(event)  # list of OrderEvent
+            if order is not None:
+                self._put_to_event(order)
 
     def create_equity_curve_df(self):
         curve = pd.DataFrame(self.all_holdings)
@@ -225,7 +222,8 @@ class NaivePortfolio(Portfolio):
     def write_curr_holdings(self):
         curr_holdings_fp = ABSOLUTE_BT_DATA_DIR / \
             f"portfolio/cur_holdings/{self.name}.json"
-        curr_holdings_converted = self._convert_holdings_to_json_writable(copy.deepcopy(self.current_holdings))
+        curr_holdings_converted = self._convert_holdings_to_json_writable(
+            copy.deepcopy(self.current_holdings))
         with open(curr_holdings_fp, 'w') as fout:
             fout.write(json.dumps(curr_holdings_converted))
         log_message(f"Written curr_holdings result to {curr_holdings_fp}")
@@ -240,7 +238,7 @@ class NaivePortfolio(Portfolio):
                 single_holding)
         all_holdings_fp = ABSOLUTE_BT_DATA_DIR / \
             f"portfolio/all_holdings/{self.name}.json"
-        self.all_holdings.append(self.current_holdings)
+        self.all_holdings.append(self._convert_holdings_to_json_writable(self.current_holdings))
         if not os.path.exists(all_holdings_fp):
             all_holdings_fp.touch()
         with open(all_holdings_fp, 'w') as fout:
@@ -251,10 +249,9 @@ class NaivePortfolio(Portfolio):
 class PercentagePortFolio(NaivePortfolio):
     def __init__(self, bars, events, order_queue, percentage, portfolio_name,
                  initial_capital=100000.0, rebalance=None, order_type=OrderType.LIMIT,
-                 portfolio_strategy=DefaultOrder, mode='cash', expires: int = 1):
+                 mode='cash', expires: int = 1):
         super().__init__(bars, events, order_queue, 0, portfolio_name,
-                         initial_capital=initial_capital, rebalance=rebalance, portfolio_strategy=portfolio_strategy,
-                         order_type=order_type, expires=expires)
+                         initial_capital=initial_capital, rebalance=rebalance, order_type=order_type, expires=expires)
         if mode not in ('cash', 'asset'):
             raise Exception('mode options: cash | asset')
         self.mode = mode
@@ -263,7 +260,7 @@ class PercentagePortFolio(NaivePortfolio):
         else:
             self.perc = percentage
 
-    def generate_order(self, signal: SignalEvent) -> List[OrderEvent]:
+    def generate_order(self, signal: SignalEvent) -> OrderEvent:
         latest_snapshot = self.bars.get_latest_bars(signal.symbol)
         if 'close' not in latest_snapshot or latest_snapshot['close'][-1] == 0.0:
             return
@@ -271,4 +268,4 @@ class PercentagePortFolio(NaivePortfolio):
             else int(fabs(self.all_holdings[-1]["total"]) * self.perc / latest_snapshot['close'][-1])
         if size <= 0:
             return
-        return self.portfolio_strategy._filter_order_to_send(signal, size)
+        return OrderEvent(signal.symbol, signal.datetime, size, signal.order_position, self.order_type, signal.price)
