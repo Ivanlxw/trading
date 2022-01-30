@@ -91,7 +91,6 @@ class LongTermCorrTrend(Strategy):
 class EitherSide(Strategy):
     """
         EitherSide = max(close_price_series) / close_price_series[-1] - 1 * 100%
-        Always returns a signal with OrderPosition.BUY
     """
 
     def __init__(self, bars, events, period, side: float):

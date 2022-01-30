@@ -108,10 +108,12 @@ class SimulatedBroker(Broker):
         return True
 
     def execute_order(self, event: OrderEvent) -> bool:
-        if all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
+        if event is None:
+            return False
+        if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
             for gk in self.gatekeepers:
                 event = gk._alter_order(event, self.port.current_holdings)
-            if event.type == "ORDER":
+            if event is not None:
                 latest_snapshot = self.bars.get_latest_bars(event.symbol)
                 if event.order_type == OrderType.LIMIT:
                     if not self._order_expired(latest_snapshot, event):
@@ -125,7 +127,7 @@ class SimulatedBroker(Broker):
                         event.date += datetime.timedelta(days=1)
                         self.order_queue.put(event)
                 elif event.order_type == OrderType.MARKET:
-                    event.trade_price = latest_snapshot["open"][-1]
+                    event.trade_price = latest_snapshot["close"][-1]
                     return self._put_fill_event(event)
             return False
         return False
@@ -259,29 +261,36 @@ class IBBroker(Broker, EWrapper, EClient):
 
         self.events.put(fill)
 
-    def execute_order(self, event):
-        if event.type == "ORDER":
-            asset = event.symbol
-            asset_type = "STK"
-            order_type = event.order_type
-            quantity = event.quantity
-            direction = event.direction
+    def execute_order(self, event) -> bool:
+        if event is None:
+            return False
+        if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
+            for gk in self.gatekeepers:
+                event = gk._alter_order(event, self.port.current_holdings)
+            if event is not None:
+                asset = event.symbol
+                asset_type = "STK"
+                order_type = event.order_type
+                quantity = event.quantity
+                direction = event.direction
 
-            # Create the Interactive Brokers contract via the
-            # passed Order event
-            ib_contract = self.create_contract(
-                asset, asset_type, self.order_routing, self.order_routing, self.currency
-            )
+                # Create the Interactive Brokers contract via the
+                # passed Order event
+                ib_contract = self.create_contract(
+                    asset, asset_type, self.order_routing, self.order_routing, self.currency
+                )
 
-            # Create the Interactive Brokers order via the
-            # passed Order event
-            ib_order = self.create_order(order_type, quantity, direction)
+                # Create the Interactive Brokers order via the
+                # passed Order event
+                ib_order = self.create_order(order_type, quantity, direction)
 
-            # Use the connection to the send the order to IB
-            self.tws_conn.placeOrder(self.order_id, ib_contract, ib_order)
+                # Use the connection to the send the order to IB
+                self.tws_conn.placeOrder(self.order_id, ib_contract, ib_order)
 
-            time.sleep(1)
-            self.order_id += 1
+                time.sleep(1)
+                self.order_id += 1
+                return True
+        return False
 
     def calculate_commission(self, quantity, fill_cost):
         full_cost = 1.3
@@ -414,38 +423,45 @@ class TDABroker(Broker):
         return 0
 
     def execute_order(self, event: OrderEvent) -> bool:
-        data = {
-            "orderType": "MARKET" if event.order_type == OrderType.MARKET else "LIMIT",
-            "session": "NORMAL",
-            "duration": "DAY",
-            "orderStrategyType": "SINGLE",
-            "orderLegCollection": [{
-                "instruction": "BUY" if event.direction == OrderPosition.BUY else "SELL",
-                "quantity": event.quantity,
-                "instrument": {
-                    "symbol": event.symbol,
-                    "assetType": "EQUITY"
-                }
-            }]
-        }
-        if data["orderType"] == "LIMIT":
-            data["price"] = event.signal_price
-        res = requests.post(
-            f"https://api.tdameritrade.com/v1/accounts/{self.account_id}/orders",
-            data=json.dumps(data),
-            headers={
-                "Authorization": f"Bearer {self.access_token}",
-                "Content-Type": "application/json"
-            }
-        )
-        if not res.ok:
-            log_message(
-                f"Place Order Unsuccessful: {event.order_details()}\n{res.status_code}\n{res.json()}")
-            log_message(res.text)
+        if event is None:
             return False
-        self.pending_orders.append(event)
-        self.check_filled_order()
-        return True
+        if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
+            for gk in self.gatekeepers:
+                event = gk._alter_order(event, self.port.current_holdings)
+            if event is not None:
+                data = {
+                    "orderType": "MARKET" if event.order_type == OrderType.MARKET else "LIMIT",
+                    "session": "NORMAL",
+                    "duration": "DAY",
+                    "orderStrategyType": "SINGLE",
+                    "orderLegCollection": [{
+                        "instruction": "BUY" if event.direction == OrderPosition.BUY else "SELL",
+                        "quantity": event.quantity,
+                        "instrument": {
+                            "symbol": event.symbol,
+                            "assetType": "EQUITY"
+                        }
+                    }]
+                }
+                if data["orderType"] == "LIMIT":
+                    data["price"] = event.signal_price
+                res = requests.post(
+                    f"https://api.tdameritrade.com/v1/accounts/{self.account_id}/orders",
+                    data=json.dumps(data),
+                    headers={
+                        "Authorization": f"Bearer {self.access_token}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                if not res.ok:
+                    log_message(
+                        f"Place Order Unsuccessful: {event.order_details()}\n{res.status_code}\n{res.json()}")
+                    log_message(res.text)
+                    return False
+                self.pending_orders.append(event)
+                self.check_filled_order()
+                return True
+        return False
 
     def check_filled_order(self):
         res = requests.get(
@@ -541,39 +557,44 @@ class AlpacaBroker(Broker):
         return True
 
     def execute_order(self, event: OrderEvent) -> bool:
+        if event is None:
+            return False
         side = "buy" if event.direction == OrderPosition.BUY else "sell"
-        if all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
-            try:
-                if event.order_type == OrderType.LIMIT:
-                    order = self.api.submit_order(
-                        symbol=event.symbol,
-                        qty=event.quantity,
-                        side=side,
-                        type="limit",
-                        time_in_force="day",
-                        limit_price=event.signal_price,
-                    )
-                    event.trade_price = event.signal_price
-                else:
-                    # todo: figure out a way to get trade_price for market orders
-                    order = self.api.submit_order(
-                        symbol=event.symbol,
-                        qty=event.quantity,
-                        side=side,
-                        type="market",
-                        time_in_force="day",
-                    )
-                    event.trade_price = event.signal_price
-            except alpaca_trade_api.rest.APIError as e:
-                log_message(f"{self.api.get_account()}")
-                log_message(
-                    f"Status Code [{e.status_code}] {e.code}: {str(e)}\nResponse: {e.response}")
-                return False
-            if order.status == "accepted":
-                log_message(f"Order filled: {order}")
-                fill_event = FillEvent(event, self.calculate_commission())
-                self.events.put(fill_event)
-                return True
+        if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
+            for gk in self.gatekeepers:
+                event = gk._alter_order(event, self.port.current_holdings)
+            if event is not None:
+                try:
+                    if event.order_type == OrderType.LIMIT:
+                        order = self.api.submit_order(
+                            symbol=event.symbol,
+                            qty=event.quantity,
+                            side=side,
+                            type="limit",
+                            time_in_force="day",
+                            limit_price=event.signal_price,
+                        )
+                        event.trade_price = event.signal_price
+                    else:
+                        # todo: figure out a way to get trade_price for market orders
+                        order = self.api.submit_order(
+                            symbol=event.symbol,
+                            qty=event.quantity,
+                            side=side,
+                            type="market",
+                            time_in_force="day",
+                        )
+                        event.trade_price = event.signal_price
+                except alpaca_trade_api.rest.APIError as e:
+                    log_message(f"{self.api.get_account()}")
+                    log_message(
+                        f"Status Code [{e.status_code}] {e.code}: {str(e)}\nResponse: {e.response}")
+                    return False
+                if order.status == "accepted":
+                    log_message(f"Order filled: {order}")
+                    fill_event = FillEvent(event, self.calculate_commission())
+                    self.events.put(fill_event)
+                    return True
         return False
 
     def calculate_commission(self):

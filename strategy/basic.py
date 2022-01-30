@@ -18,6 +18,8 @@ class OneSidedOrderOnly(Strategy):
 
     def _calculate_signal(self, ticker: str) -> List[SignalEvent]:
         bars_list = self.bars.get_latest_bars(ticker)
+        if len(bars_list["datetime"]) < 2:
+            return
         return [SignalEvent(ticker, bars_list["datetime"][-1], self.order_position, bars_list["close"][-1])]
 
 

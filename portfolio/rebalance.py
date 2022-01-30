@@ -65,13 +65,14 @@ class RebalanceYearly(Rebalance):
     def rebalance(self, stock_list, current_holdings) -> None:
         if self.need_rebalance(current_holdings):
             for symbol in stock_list:
-                latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
+                latest_close_price = self.bars.get_latest_bars(symbol)[
+                                                               'close'][-1]
                 if current_holdings[symbol]['quantity'] > 0:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
                 elif current_holdings[symbol]['quantity'] < 0:
                     self.event_queue.put(OrderEvent(
-                        symbol, current_holdings['datetime'], abs(current_holdings[symbol]['quantity']), OrderPosition.BUY, OrderType.MARKET, latest_close_price))
+                        symbol, current_holdings['datetime'], -current_holdings[symbol]['quantity'], OrderPosition.BUY, OrderType.MARKET, latest_close_price))
 
 
 class RebalanceBiennial(RebalanceYearly):
@@ -101,6 +102,7 @@ class RebalanceWeekly(RebalanceYearly):
     def need_rebalance(self, current_holdings):
         return current_holdings['datetime'].weekday() == 1
 
+
 class SellLosers(metaclass=ABCMeta):
     ''' Sell stocks that have recorded >5% losses '''
 
@@ -112,13 +114,14 @@ class SellLosers(metaclass=ABCMeta):
         if self.need_rebalance(current_holdings):
             for symbol in stock_list:
                 # sell all losers
-                latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
+                latest_close_price = self.bars.get_latest_bars(symbol)[
+                                                               'close'][-1]
                 if current_holdings[symbol]["quantity"] > 0 and latest_close_price * 0.95 < current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
                 elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * 0.95 > current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
-                        symbol, current_holdings['datetime'], abs(current_holdings[symbol]['quantity']), OrderPosition.BUY, OrderType.MARKET, latest_close_price))
+                        symbol, current_holdings['datetime'], -current_holdings[symbol]['quantity'], OrderPosition.BUY, OrderType.MARKET, latest_close_price))
 
 
 class SellLosersYearly(SellLosers, Rebalance):
@@ -141,6 +144,47 @@ class SellLosersQuarterly(SellLosers, Rebalance):
     def need_rebalance(self, current_holdings):
         # every quarter
         return current_holdings['datetime'].is_quarter_start
+
+
+class SellWinners(metaclass=ABCMeta):
+    ''' Sell stocks that have recorded >25% gain '''
+
+    def need_rebalance(self, _):
+        raise NotImplementedError(
+            "Should implement need_rebalance().")
+            
+    def rebalance(self, stock_list, current_holdings) -> None:
+        if self.need_rebalance(current_holdings):
+            for symbol in stock_list:
+                # sell all losers
+                latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
+                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * 1.20 > current_holdings[symbol]["average_trade_price"]:
+                    self.event_queue.put(OrderEvent(
+                        symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
+                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * 0.80 < current_holdings[symbol]["average_trade_price"]:
+                    self.event_queue.put(OrderEvent(
+                        symbol, current_holdings['datetime'], -current_holdings[symbol]['quantity'], OrderPosition.BUY, OrderType.MARKET, latest_close_price))
+
+
+class SellWinnersYearly(SellWinners, Rebalance):
+    def need_rebalance(self, current_holdings):
+        return current_holdings['datetime'].week == 1 and current_holdings['datetime'].weekday() == 0
+
+
+class SellWinnersHalfYearly(SellWinners, Rebalance):
+    def need_rebalance(self, current_holdings):
+        return current_holdings['datetime'].month % 6 == 1 and current_holdings['datetime'].day < 7 and current_holdings['datetime'].weekday() == 0
+
+
+class SellWinnersQuarterly(SellWinners, Rebalance):
+    def need_rebalance(self, current_holdings):
+        # every quarter
+        return current_holdings['datetime'].is_quarter_start
+
+class SellWinnersMonthly(SellWinners, Rebalance):
+    def need_rebalance(self, current_holdings):
+        # every quarter
+        return current_holdings['datetime'].day < 7 and current_holdings['datetime'].weekday() == 0
 
 class ExitShortMonthly(Rebalance):
     ''' Exit short positions monthly. Replicates the case where short positions cannot be held for too long '''
@@ -200,7 +244,7 @@ class TakeProfitThreshold(Rebalance):
                 self.event_queue.put(OrderEvent(
                     symbol, current_holdings['datetime'], curr_qty, OrderPosition.SELL, OrderType.MARKET, latest_close_price))
 
-## Incomplete
+# Incomplete
 class SellLowestPerforming(Rebalance):
     def _days_hold(self, today: pd.Timestamp, last_traded_date: pd.Timestamp):
         if last_traded_date is None:
