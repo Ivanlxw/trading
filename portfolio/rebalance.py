@@ -113,10 +113,10 @@ class SellLosers(metaclass=ABCMeta):
             for symbol in stock_list:
                 # sell all losers
                 latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
-                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * 0.95 < current_holdings[symbol]["last_trade_price"]:
+                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * 0.95 < current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
-                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * 0.95 > current_holdings[symbol]["last_trade_price"]:
+                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * 0.95 > current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], abs(current_holdings[symbol]['quantity']), OrderPosition.BUY, OrderType.MARKET, latest_close_price))
 
@@ -166,12 +166,12 @@ class StopLossThreshold(Rebalance):
     
     def rebalance(self, stock_list, current_holdings) -> None:
         for symbol in stock_list:
-            last_trade_price = current_holdings[symbol]["last_trade_price"]
-            if last_trade_price is None or current_holdings[symbol]["quantity"] == 0:
+            average_trade_price = current_holdings[symbol]["average_trade_price"]
+            if average_trade_price is None or current_holdings[symbol]["quantity"] == 0:
                 continue
             curr_qty = current_holdings[symbol]["quantity"]
             latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
-            gains_ratio = latest_close_price / last_trade_price
+            gains_ratio = latest_close_price / average_trade_price
             if curr_qty < 0 and gains_ratio > 1 + self.threshold:
                 self.event_queue.put(OrderEvent(symbol, current_holdings['datetime'], abs(curr_qty), OrderPosition.BUY, OrderType.MARKET, latest_close_price))
             elif curr_qty > 0 and gains_ratio < 1 - self.threshold:
@@ -187,12 +187,12 @@ class TakeProfitThreshold(Rebalance):
     
     def rebalance(self, stock_list, current_holdings) -> None:
         for symbol in stock_list:
-            last_trade_price = current_holdings[symbol]["last_trade_price"]
-            if last_trade_price is None:
+            average_trade_price = current_holdings[symbol]["average_trade_price"]
+            if average_trade_price is None:
                 continue
             curr_qty = current_holdings[symbol]["quantity"]
             latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
-            gains_ratio = latest_close_price / last_trade_price
+            gains_ratio = latest_close_price / average_trade_price
             if curr_qty < 0 and gains_ratio < 1 - self.threshold:
                 self.event_queue.put(OrderEvent(
                     symbol, current_holdings['datetime'], abs(curr_qty), OrderPosition.BUY, OrderType.MARKET, latest_close_price))
@@ -212,7 +212,7 @@ class SellLowestPerforming(Rebalance):
         min = ("", 10000)
         for sym in self.bars.symbol_data:
             latest_snapshot = self.bars.get_latest_bars(sym)
-            last_traded_price = self.current_holdings[sym]["last_trade_price"]
+            last_traded_price = self.current_holdings[sym]["average_trade_price"]
             if last_traded_price is None or self.current_holdings[sym]["quantity"] <= 0:
                 continue
             perc_change = (latest_snapshot["close"][-1] - last_traded_price) / \

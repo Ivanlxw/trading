@@ -88,8 +88,7 @@ class NaivePortfolio(Portfolio):
     def construct_current_holdings(self, ):
         d = dict((s, {
             'quantity': 0.0,
-            'last_trade_date': None,
-            'last_trade_price': None
+            'average_trade_price': None,
         }) for s in self.symbol_list)
         d['cash'] = self.initial_capital
         d['commission'] = 0.0
@@ -105,14 +104,9 @@ class NaivePortfolio(Portfolio):
         for f in self.current_holdings:
             if f == "datetime":
                 assert isinstance(
-                    self.current_holdings["datetime"], int), "read last_trade_date is not int"
+                    self.current_holdings["datetime"], int), "read datetime is not int"
                 self.current_holdings["datetime"] = convert_ms_to_timestamp(
                     self.current_holdings["datetime"])
-            elif isinstance(self.current_holdings[f], dict) and "last_trade_date" in self.current_holdings[f] and self.current_holdings[f]["last_trade_date"] is not None:
-                assert isinstance(
-                    self.current_holdings[f]["last_trade_date"], int), "read last_trade_date is not int"
-                self.current_holdings[f]["last_trade_date"] = convert_ms_to_timestamp(
-                    self.current_holdings[f]["last_trade_date"])
 
     def update_timeindex(self):
         bars = {}
@@ -144,11 +138,10 @@ class NaivePortfolio(Portfolio):
     def update_holdings_from_fill(self, fill: FillEvent):
         fill_dir = 1 if fill.order_event.direction == OrderPosition.BUY else -1
         cash = fill_dir * fill.order_event.trade_price * fill.order_event.quantity
-        self.current_holdings[fill.order_event.symbol]['last_trade_date'] = fill.order_event.date
+        self.current_holdings[fill.order_event.symbol]['average_trade_price'] = (self.current_holdings[fill.order_event.symbol]['average_trade_price'] * self.current_holdings[fill.order_event.symbol]
+                                                                                 ["quantity"] + fill.order_event.trade_price * fill_dir * fill.order_event.quantity) / (self.current_holdings[fill.order_event.symbol]["quantity"] + fill_dir * fill.order_event.quantity)
         self.current_holdings[fill.order_event.symbol]["quantity"] += fill_dir * \
             fill.order_event.quantity
-        # assert self.current_holdings[fill.order_event.symbol][
-        #     "quantity"] >= 0, f"{fill.order_event.symbol}'s current pos: {self.current_holdings[fill.order_event.symbol]['quantity']}"
         self.current_holdings[fill.order_event.symbol]['last_trade_price'] = fill.order_event.trade_price
         self.current_holdings['commission'] += fill.commission
         self.current_holdings['cash'] -= (cash + fill.commission)
@@ -167,7 +160,7 @@ class NaivePortfolio(Portfolio):
         if self.order_type == OrderType.LIMIT:
             order.expires = order.date + timedelta(days=self.expires)
         self.events.put(order)
-                
+
     def update_signal(self, event):
         if event.type == 'SIGNAL':
             order = self.generate_order(event)  # list of OrderEvent
@@ -214,9 +207,6 @@ class NaivePortfolio(Portfolio):
             if f == "datetime":
                 holding["datetime"] = int(
                     holding["datetime"].timestamp() * 1000)
-            elif isinstance(holding[f], dict) and "last_trade_date" in holding[f] and holding[f]["last_trade_date"] is not None:
-                holding[f]["last_trade_date"] = int(
-                    holding[f]["last_trade_date"].timestamp() * 1000)
         return holding
 
     def write_curr_holdings(self):
@@ -238,7 +228,8 @@ class NaivePortfolio(Portfolio):
                 single_holding)
         all_holdings_fp = ABSOLUTE_BT_DATA_DIR / \
             f"portfolio/all_holdings/{self.name}.json"
-        self.all_holdings.append(self._convert_holdings_to_json_writable(self.current_holdings))
+        self.all_holdings.append(
+            self._convert_holdings_to_json_writable(self.current_holdings))
         if not os.path.exists(all_holdings_fp):
             all_holdings_fp.touch()
         with open(all_holdings_fp, 'w') as fout:
