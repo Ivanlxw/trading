@@ -14,7 +14,6 @@ from trading.utilities.utils import convert_ms_to_timestamp, daily_date_range
 from trading.event import MarketEvent
 
 NY = 'America/New_York'
-ABSOLUTE_DATA_FP = Path(os.path.abspath(os.path.dirname(__file__)))
 frequency_types = ["1min", "5min", "15min", "30min", "1hour", "4hour", "daily"]
 
 
@@ -46,7 +45,7 @@ class DataHandler(ABC):
         else:
             self.end_date = None
 
-        self.csv_dir = ABSOLUTE_DATA_FP / f"../../Data/data/{frequency_type}"
+        self.csv_dir = Path(os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
         assert self.csv_dir.is_dir()
 
         self.fmp_api_key = os.environ["FMP_API"]
@@ -60,8 +59,8 @@ class DataHandler(ABC):
         self.fundamental_data = {}
         exclude_sym = []
         for sym in self.symbol_list:
-            sym_fundamental_fp = ABSOLUTE_DATA_FP / \
-                f"../../Data/data/fundamental/quarterly/{sym}.csv"
+            sym_fundamental_fp = self.csv_dir / \
+                f"../../data/fundamental/quarterly/{sym}.csv"
             if os.path.exists(sym_fundamental_fp) and not refresh:
                 fund_hist = pd.read_csv(
                     sym_fundamental_fp, header=0, index_col=0)
@@ -225,14 +224,14 @@ class DataFromDisk(HistoricCSVDataHandler):
                 "Start date has to be string and following format: YYYY-MM-DD")
         assert frequency_type in ["1min", "5min",
                                   "10min", "15min", "30min", "daily"]
-        super().__init__(events, symbol_list,
-                         start_date, end_date=None, frequency_type="daily", live=live)
-        self.live = live
-
-        self.data_fields = ['datetime', 'open', 'high', 'low', 'close', 'volume']
         self.frequency_type = frequency_type
+        super().__init__(events, symbol_list,
+                         start_date, end_date=None, frequency_type=self.frequency_type, live=live)
+        self.live = live
+        self.data_fields = ['datetime', 'open', 'high', 'low', 'close', 'volume']
         self.continue_backtest = True
-        self.csv_dir = ABSOLUTE_DATA_FP / f"../../Data/data/{self.frequency_type}"
+        self.csv_dir = Path(os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
+        self._set_symbol_data()
 
     def __copy__(self):
         return DataFromDisk(

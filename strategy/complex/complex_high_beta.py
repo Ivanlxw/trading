@@ -14,7 +14,7 @@ class ComplexHighBeta(ComplexStrategyImpl):
         super().__init__(bars, events, description=description)
         assert all(
             x in bars.symbol_list for x in index_syms), "Strategy needs index to be in symbol_list"
-        assert corr_days > 50, "days to compare corr and beta has to be > 25 to be relatively robust"
+        assert corr_days > 50, "days to compare corr and beta has to be > 50 to be relatively robust"
         self.index_symbols = index_syms
         self.index_strategy = index_strategy
         self.corr_days = corr_days
@@ -56,7 +56,7 @@ class ComplexHighBeta(ComplexStrategyImpl):
             if sym in self.index_symbols:
                 continue
             sym_hist_prices = self.bars.get_latest_bars(sym, self.corr_days)
-            if len(snp_hist_prices["close"]) != len(sym_hist_prices["close"]):
+            if len(snp_hist_prices["close"]) != len(sym_hist_prices["close"]) or len(sym_hist_prices["close"]) < self.corr_days:
                 continue
             sym_index_corr = np.corrcoef(
                 snp_hist_prices["close"], sym_hist_prices["close"])
@@ -65,12 +65,11 @@ class ComplexHighBeta(ComplexStrategyImpl):
             spy_pct_changes = self._helper_pct_change(snp_hist_prices["close"])
             sym_hist_changes = self._helper_pct_change(
                 sym_hist_prices["close"])
-            try:
-                beta = np.cov(sym_hist_changes, spy_pct_changes)[
-                    0][1] / np.var(spy_pct_changes)
-            except Exception as e:
-                print(
-                    f"Input data that gave err: \n{sym}: {sym_hist_changes}\nSPY: {spy_pct_changes}")
+            spy_var = np.var(spy_pct_changes)
+            if spy_var <= 0: 
+                continue
+            beta = np.cov(sym_hist_changes, spy_pct_changes)[
+                0][1] / spy_var
             if beta > 1 and beta > beta_map[-1][1]:
                 beta_map.append((sym, beta, sym_hist_prices["close"][-1]))
         return beta_map[1:]

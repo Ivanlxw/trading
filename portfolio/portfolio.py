@@ -47,7 +47,7 @@ class NaivePortfolio(Portfolio):
         self.order_queue = order_queue
         self.symbol_list = list(self.bars.symbol_data.keys(
         ))  # if self.bars.symbol_data else self.bars.symbol_list
-        log_message(str(self.symbol_list))
+        log_message(f"{len(self.symbol_list)} symbols loaded: {str(self.symbol_list)}")
         self.start_date = pd.Timestamp(self.bars.start_date, unit="ms")
         self.initial_capital = initial_capital
         self.qty = stock_size
