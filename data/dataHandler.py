@@ -227,7 +227,6 @@ class DataFromDisk(HistoricCSVDataHandler):
                                   "10min", "15min", "30min", "daily"]
         super().__init__(events, symbol_list,
                          start_date, end_date=None, frequency_type="daily", live=live)
-        self.start_date_str = start_date
         self.live = live
 
         self.data_fields = ['open', 'high', 'low', 'close', 'volume']

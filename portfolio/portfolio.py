@@ -9,12 +9,11 @@ import pandas as pd
 from datetime import timedelta
 from abc import ABCMeta, abstractmethod
 
-from trading.event import FillEvent, OrderEvent, SignalEvent
+from trading.event import OrderEvent, SignalEvent
 from backtest.performance import create_sharpe_ratio, create_drawdowns
 from trading.portfolio.rebalance import NoRebalance
-from trading.utilities.utils import convert_ms_to_timestamp
+from trading.utilities.utils import ABSOLUTE_BT_DATA_DIR, convert_ms_to_timestamp
 from backtest.utilities.utils import log_message
-from Data.DataWriters.Prices import ABSOLUTE_BT_DATA_DIR
 
 
 class Portfolio(object):
@@ -114,8 +113,7 @@ class NaivePortfolio(Portfolio):
         bars = {}
         for sym in self.symbol_list:
             bars[sym] = self.bars.get_latest_bars(sym, N=1)
-        self.current_holdings['datetime'] = bars[self.symbol_list[0]
-                                                 ]['datetime'][0]
+        self.current_holdings['datetime'] = bars[self.symbol_list[0]]['datetime'][-1]
 
         # update holdings based off last trading day
         dh = dict((s, 0) for s in self.symbol_list)

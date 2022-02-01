@@ -105,3 +105,20 @@ class PremiumLimit(GateKeeper):
 
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
         return not (order_event.direction == OrderPosition.BUY and order_event.signal_price > self.premium_limit)
+
+
+class MaxPortfolioValuePerInst(GateKeeper):
+    """ Total mkt value of a symbol has to be <= x% of total portfolio value """
+
+    def __init__(self, bars: DataHandler, position_percentage: float) -> None:
+        assert position_percentage < 1 and position_percentage > 0, "position_percentage argument should be 0 < x < 1"
+        super().__init__(bars)
+        self.position_percentage = position_percentage
+
+    def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
+        symbol_close_px = self.bars.get_latest_bars(
+            order_event.symbol)['close']
+        if len(symbol_close_px) < 1:
+            return False
+        symbol_close_px = symbol_close_px[0]
+        return not (order_event.direction == OrderPosition.BUY and current_holdings[order_event.symbol]["quantity"] * symbol_close_px > current_holdings['total'] * self.position_percentage)

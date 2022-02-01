@@ -1,5 +1,4 @@
 from typing import List
-from backtest.utilities.utils import log_message
 import datetime
 import os
 import threading
@@ -7,7 +6,6 @@ import time
 import logging
 from abc import ABC, abstractmethod
 import requests
-from math import fabs
 import pandas as pd
 import json
 
@@ -16,6 +14,7 @@ from ibapi.contract import Contract
 from ibapi.wrapper import EWrapper
 import alpaca_trade_api
 
+from backtest.utilities.utils import log_message
 from trading.broker.gatekeepers import DummyGateKeeper, GateKeeper
 from trading.event import FillEvent, OrderEvent
 from trading.portfolio.portfolio import NaivePortfolio, Portfolio
