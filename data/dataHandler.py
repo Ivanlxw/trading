@@ -203,7 +203,7 @@ class HistoricCSVDataHandler(DataHandler):
                     bar[k] += [indi_bar_dict[k]]
             bar['symbol'] = symbol
             return bar
-        logging.error("Symbol is not available in historical data set.")
+        logging.error(f"Symbol ({symbol}) is not available in historical data set.")
 
     def update_bars(self):
         for s in self.symbol_data:
@@ -229,7 +229,7 @@ class DataFromDisk(HistoricCSVDataHandler):
                          start_date, end_date=None, frequency_type="daily", live=live)
         self.live = live
 
-        self.data_fields = ['open', 'high', 'low', 'close', 'volume']
+        self.data_fields = ['datetime', 'open', 'high', 'low', 'close', 'volume']
         self.frequency_type = frequency_type
         self.continue_backtest = True
         self.csv_dir = ABSOLUTE_DATA_FP / f"../../Data/data/{self.frequency_type}"
@@ -260,13 +260,13 @@ class DataFromDisk(HistoricCSVDataHandler):
             dfs = [(sym, pd.read_csv(
                 os.path.join(self.csv_dir / f"{sym}.csv"),
                 index_col=0,
-            ).drop_duplicates().sort_index().iloc[:-500,:].loc[:, ["open", "high", "low", "close", "volume"]]) for sym in self.symbol_list]
+            ).drop_duplicates().sort_index().iloc[-500:].loc[:, ["open", "high", "low", "close", "volume"]]) for sym in self.symbol_list]
         else:
             with ProcessPool(4) as p:
                 dfs = p.map(lambda s: (s, pd.read_csv(
                     os.path.join(self.csv_dir / f"{s}.csv"),
                     index_col=0,
-                ).drop_duplicates().sort_index().iloc[:-500:].loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
+                ).drop_duplicates().sort_index().iloc[-500:].loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
         for sym, price_history in dfs:
             if price_history.empty:
                 logging.info(f"Empty dataframe for {sym}")
@@ -279,7 +279,6 @@ class DataFromDisk(HistoricCSVDataHandler):
             else:
                 comb_index.union(
                     self.symbol_data[sym].index.drop_duplicates())
-
         logging.info(f"[_set_symbol_data] Excluded symbols: {sym_to_remove}")
         for sym in self.symbol_data:
             self.symbol_data[sym] = self.symbol_data[sym].reindex(
@@ -290,32 +289,11 @@ class DataFromDisk(HistoricCSVDataHandler):
             self.latest_symbol_data[sym] = self.symbol_data[sym].loc[:, [
                 "datetime", "open", "high", "low", "close", "volume"]].to_dict('records')
 
-    def get_latest_bars(self, symbol, N=1):
-        if os.path.exists(self.csv_dir / f"{symbol}.csv"):
-            try:
-                df = pd.read_csv(self.csv_dir / f"{symbol}.csv", index_col=0)
-                if df.empty:
-                    os.remove(self.csv_dir / f"{symbol}.csv")
-                    self.symbol_list.remove(symbol)
-                    log_message(f"{self.csv_dir / {symbol}}.csv removed as it was empty")
-                    return
-                else:
-                    bar = {}
-                    for k in self.data_fields:
-                        bar[k] = df[k].iloc[-N:].values
-                    bar['symbol'] = symbol
-                    bar['datetime'] = [convert_ms_to_timestamp(ms) for ms in df.index.values[-N:]]
-                    return bar
-            except Exception as e:
-                raise RuntimeError(f"{self.csv_dir / f'{symbol}.csv'} exists but err: {e}")
-
     def update_bars(self):
         if not self.live:
             super().update_bars()
+            self.events.put(MarketEvent())
             return
         log_message("reading prices from disk")
-        for s in self.symbol_list:
-            b = self.get_latest_bars(s)
-            if b is not None:
-                self.latest_symbol_data[s].append(b)
+        self._set_symbol_data()
         self.events.put(MarketEvent())
