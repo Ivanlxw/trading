@@ -71,7 +71,7 @@ class EnoughCash(GateKeeper):
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
         order_value = fabs(order_event.quantity * order_event.signal_price)
         if (order_event.direction == OrderPosition.BUY and current_holdings["cash"] > order_value) or \
-                (order_event.direction == OrderPosition.SELL and current_holdings["total"] > order_value):    # proxy x10
+                (order_event.direction == OrderPosition.SELL and current_holdings["total"] > order_value):
             return True
         return False
 

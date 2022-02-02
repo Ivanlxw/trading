@@ -55,11 +55,10 @@ class NaivePortfolio(Portfolio):
         self.name = portfolio_name
         # checks if a saved current_holdings is alr present and if present,
         # load it. Otherwise construct
+        self.current_holdings: dict = self.construct_current_holdings()
         if os.path.exists(ABSOLUTE_BT_DATA_DIR / f"portfolio/cur_holdings/{portfolio_name}.json"):
             self._setup_holdings_from_json(
                 ABSOLUTE_BT_DATA_DIR / f"portfolio/cur_holdings/{portfolio_name}.json")
-        else:
-            self.current_holdings = self.construct_current_holdings()
         assert isinstance(self.current_holdings, dict)
         self.all_holdings = self.construct_all_holdings()
         self.order_type = order_type
@@ -101,13 +100,15 @@ class NaivePortfolio(Portfolio):
             self.current_holdings = self.construct_current_holdings()
             return
         with open(fp, 'r') as fin:
-            self.current_holdings = json.load(fin)
+            self.current_holdings.update(json.load(fin))
         for f in self.current_holdings:
             if f == "datetime":
                 assert isinstance(
                     self.current_holdings["datetime"], int), "read datetime is not int"
                 self.current_holdings["datetime"] = convert_ms_to_timestamp(
                     self.current_holdings["datetime"])
+            elif isinstance(self.current_holdings[f], dict) and self.current_holdings[f] == 0:
+                self.current_holdings[f]['average_trade_price'] = None
 
     def update_timeindex(self):
         bars = {}
@@ -124,10 +125,13 @@ class NaivePortfolio(Portfolio):
 
         for s in self.symbol_list:
             # position size * close price
-            market_val = self.current_holdings[s]['quantity'] * (
-                bars[s]['close'][0] if 'close' in bars[s] and len(bars[s]['close']) > 0 else 0)
-            dh[s] = market_val
-            dh['total'] += market_val
+            if s in self.current_holdings:
+                market_val = self.current_holdings[s]['quantity'] * (
+                    bars[s]['close'][0] if 'close' in bars[s] and len(bars[s]['close']) > 0 else 0)
+                dh[s] = market_val
+                dh['total'] += market_val
+            else:
+                dh[s] = 0.0
 
         # append current holdings
         self.all_holdings.append(dh)

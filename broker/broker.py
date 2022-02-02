@@ -628,6 +628,6 @@ class AlpacaBroker(Broker):
                 quantity=pos_details.qty,
                 average_buy_price=pos_details.avg_entry_price
             )
-        cur_holdings["cash"] = self.get_account_details().cash
+        cur_holdings["cash"] = float(self.get_account_details().cash)
         port.current_holdings.update(cur_holdings)
     
