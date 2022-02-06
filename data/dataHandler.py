@@ -44,7 +44,7 @@ class DataHandler(ABC):
                 end_date, infer_datetime_format=True).value // 10 ** 6
         else:
             self.end_date = None
-
+        self.frequency_type = frequency_type
         self.csv_dir = Path(os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
         assert self.csv_dir.is_dir()
 

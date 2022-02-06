@@ -13,7 +13,7 @@ from trading.event import SignalEvent
 from trading.data.dataHandler import DataHandler
 
 
-class Strategy(object):
+class Strategy(object, metaclass=ABCMeta):
     """
     Strategy is an abstract base class providing an interface for
     all subsequent (inherited) strategy handling objects.
@@ -22,8 +22,7 @@ class Strategy(object):
     the Strategy object is agnostic to the data source, since it
     obtains the bar tuples from a queue object.
     """
-    __metaclass__ = ABCMeta
-
+    @abstractmethod
     def __init__(self, bars: DataHandler, events: queue.Queue, description: str = ""):
         """
         Args:

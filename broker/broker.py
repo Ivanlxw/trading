@@ -515,10 +515,11 @@ class TDABroker(Broker):
         for pos_details in position_list:
             cur_holdings[pos_details["instrument"]["symbol"]] = dict(
                 quantity=pos_details["longQuantity"],
-                average_buy_price=pos_details["averagePrice"]
+                average_trade_price=pos_details["averagePrice"]
             )
         cur_holdings["cash"] = acct_details["securitiesAccount"]["currentBalances"]["cashBalance"]
         port.current_holdings.update(cur_holdings)
+        port.write_curr_holdings()
 
 
 class AlpacaBroker(Broker):
@@ -625,8 +626,8 @@ class AlpacaBroker(Broker):
         cur_holdings = dict()
         for pos_details in self.get_positions():
             cur_holdings[pos_details.symbol] = dict(
-                quantity=pos_details.qty,
-                average_buy_price=pos_details.avg_entry_price
+                quantity=float(pos_details.qty),
+                average_trade_price=float(pos_details.avg_entry_price)
             )
         cur_holdings["cash"] = float(self.get_account_details().cash)
         port.current_holdings.update(cur_holdings)

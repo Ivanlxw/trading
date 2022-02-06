@@ -14,9 +14,8 @@ from trading.strategy.base import Strategy
 
 FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / "Data/data/fundamental/quarterly"
 
-class FundamentalStrategy(Strategy):
-    __metaclass__ = ABCMeta
-
+class FundamentalStrategy(Strategy, metaclass=ABCMeta): 
+    @abstractmethod
     def __init__(self, bars: DataHandler, events, description="") -> None:
         super().__init__(bars, events, description)
         if self.bars.fundamental_data is None:
@@ -151,6 +150,9 @@ class DCFSignal(FundamentalStrategy):
         super().__init__(bars, events, f"DCFSignal: buy_ratio={buy_ratio}, sell_ratio={sell_ratio}")
         self.buy_ratio = buy_ratio
         self.sell_ratio = sell_ratio
+
+    def get_fundamental_data(self, symbol: str):
+        raise RuntimeError("get_fundamental_data() should not be called with DCFSignal")
 
     def _calculate_signal(self, sym) -> List[SignalEvent]:
         # get most "recent" fundamental data
