@@ -65,14 +65,16 @@ class BroadFunctor(Strategy, BroadMarketStrategy):
         }
 
 
-def _BELOW_SMA(ohlc_data, period: int) -> bool:
-    sma = talib.SMA(ohlc_data["close"].values, period)
-    return sma[-1] > ohlc_data["close"].iloc[-1]
+def _BELOW_FUNCTOR(ohlc_data, period: int, func) -> bool:
+    """ func: takes in ohlc_data and period (int) """
+    ta_vals = func(ohlc_data["close"].values, period)
+    return ta_vals[-1] > ohlc_data["close"].iloc[-1]
 
 
-def _ABOVE_SMA(ohlc_data, period: int) -> bool:
-    sma = talib.SMA(ohlc_data["close"].values, period)
-    return sma[-1] < ohlc_data["close"].iloc[-1]
+def _ABOVE_FUNCTOR(ohlc_data, period: int, func) -> bool:
+    """ func: takes in ohlc_data and period (int) """
+    ta_vals = func(ohlc_data["close"].values, period)
+    return ta_vals[-1] < ohlc_data["close"].iloc[-1]
 
 
 def _EXTREMA(ohlc_data, percentile) -> bool:
@@ -97,16 +99,22 @@ def _BROAD_CORR_LE(ohlc_data, period: int, corr: float) -> bool:
     return market_price_corr < corr
 
 
-def below_sma(bars, events, broad_sym, n: int, order_position: OrderPosition):
-    """ value = True: buy below sma. Otherwise sell"""
-    def below_sma(data): return _BELOW_SMA(data, n)
-    return BroadFunctor(bars, events, broad_sym, below_sma, n+2, order_position, description=f"below_sma: {broad_sym} Below SMA")
+def below_functor(bars, events, broad_sym, n: int, order_position: OrderPosition, func=talib.SMA):
+    """ 
+        below_functor: Apply a function and if the last close px is below the function, gets into order_position
+        func = any function that takes in (array, n) and outputs array[n] 
+    """
+    def _below_sma(data): return _BELOW_FUNCTOR(data, n, func)
+    return BroadFunctor(bars, events, broad_sym, _below_sma, n+2, order_position, description=f"below_sma: {broad_sym} Below SMA")
 
 
-def above_sma(bars, events, broad_sym, n: int, order_position: OrderPosition):
-    """ value = True: buy below sma. Otherwise sell"""
-    def below_sma(data): return _ABOVE_SMA(data, n)
-    return BroadFunctor(bars, events, broad_sym, below_sma, n+2, order_position, description=f"above_sma: {broad_sym} above SMA")
+def above_functor(bars, events, broad_sym, n: int, order_position: OrderPosition, func=talib.SMA):
+    """ 
+        above_functor: Apply a function and if the last close px is above the function, gets into order_position
+        func = any function that takes in (array, n) and outputs array[n] 
+    """
+    def _above_sma(data): return _ABOVE_FUNCTOR(data, n, func)
+    return BroadFunctor(bars, events, broad_sym, _above_sma, n+2, order_position, description=f"above_sma: {broad_sym} above SMA")
 
 
 def low_extrema(bars, events, broad_sym, n: int, percentile: int, order_position: OrderPosition):

@@ -1,8 +1,10 @@
+import queue
 from typing import List
 import talib
 import numpy as np
 import scipy.stats as stats
 
+from trading.data.dataHandler import DataHandler
 from trading.event import SignalEvent
 from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
@@ -46,7 +48,7 @@ class ExtremaBounce(Strategy):
         self.long_period = long_period
         self.percentile = percentile
 
-    def _calculate_signal(self, ticker) -> SignalEvent:
+    def _calculate_signal(self, ticker) -> List[SignalEvent]:
         bars_list = self.bars.get_latest_bars(ticker, N=self.long_period)
         if len(bars_list["datetime"]) < self.long_period:
             return
@@ -67,7 +69,7 @@ class LongTermCorrTrend(Strategy):
         self.contrarian = strat_contrarian
         self.corr_cap = corr
 
-    def _calculate_signal(self, ticker) -> SignalEvent:
+    def _calculate_signal(self, ticker) -> List[SignalEvent]:
         bars_list = self.bars.get_latest_bars(ticker, N=self.period)
         if len(bars_list['datetime']) != self.period:
             return
@@ -99,7 +101,7 @@ class EitherSide(Strategy):
         assert side > 0, "side cannot be <= 0"
         self.side = side
 
-    def _calculate_signal(self, ticker) -> SignalEvent:
+    def _calculate_signal(self, ticker) -> List[SignalEvent]:
         bars_list = self.get_bars(ticker)
         if bars_list is None:
             return
@@ -108,3 +110,36 @@ class EitherSide(Strategy):
             return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"Upside: {side}")]
         elif side < -self.side:
             return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], f"Downside: {side}")]
+
+
+class Trending(Strategy):
+    """
+        Trending - Up = BUY, Down = SELL. IF contrarian then vice-versa
+    """
+
+    def __init__(self, bars: DataHandler, events: queue.Queue, func, period, trending_score, description="Trending"):
+        super().__init__(bars, events, description + f": period={period}")
+        self.period = period
+        self.trending_score = trending_score
+        self.func = func
+
+    def _calc_trending_score(self, bars_list) -> float:
+        total = self.period * (self.period - 1) / 2
+        score = 0
+        values = self.func(bars_list)   # list or np.array
+        for idx, val in enumerate(values):
+            if idx == 0:
+                continue
+            score += idx / total * (1 if val > values[idx-1] else -1)
+        return score
+
+    def _calculate_signal(self, ticker) -> List[SignalEvent]:
+        bars_list = self.get_bars(ticker)
+        if bars_list is None:
+            return
+        trending_score = self._calc_trending_score(bars_list)
+        assert abs(trending_score) <= 1, f"Trending_score not < 1: {trending_score}"
+        if trending_score > self.trending_score:
+            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"[BUY] trending_score: {trending_score}")]
+        elif trending_score < -self.trending_score:
+            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], f"[SELL] trending_score: {trending_score}")]

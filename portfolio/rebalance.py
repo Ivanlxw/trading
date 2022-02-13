@@ -104,7 +104,11 @@ class RebalanceWeekly(RebalanceYearly):
 
 
 class SellLosers(metaclass=ABCMeta):
-    ''' Sell stocks that have recorded >5% losses '''
+    ''' Sell stocks that have recorded >x% losses '''
+    def __init__(self, bars, event_queue, perc: float=0.05):
+        assert perc < 1, "percentage should be 0 < perc < 1"
+        super().__init__(bars, event_queue)
+        self.perc = perc
 
     def need_rebalance(self, _):
         raise NotImplementedError(
@@ -116,10 +120,10 @@ class SellLosers(metaclass=ABCMeta):
                 # sell all losers
                 latest_close_price = self.bars.get_latest_bars(symbol)[
                                                                'close'][-1]
-                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * 0.95 < current_holdings[symbol]["average_trade_price"]:
+                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * (1 - self.perc) < current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
-                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * 0.95 > current_holdings[symbol]["average_trade_price"]:
+                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * (1 - self.perc) > current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], -current_holdings[symbol]['quantity'], OrderPosition.BUY, OrderType.MARKET, latest_close_price))
 
@@ -139,7 +143,7 @@ class SellLosersHalfYearly(SellLosers, Rebalance):
 
 
 class SellLosersQuarterly(SellLosers, Rebalance):
-    ''' Sell stocks that have recorded >5% losses at the start of the quarter '''
+    ''' Sell stocks that have recorded >10% losses at the start of the quarter '''
 
     def need_rebalance(self, current_holdings):
         # every quarter
@@ -148,6 +152,10 @@ class SellLosersQuarterly(SellLosers, Rebalance):
 
 class SellWinners(metaclass=ABCMeta):
     ''' Sell stocks that have recorded >25% gain '''
+    def __init__(self, bars, event_queue, perc: float=0.20):
+        assert perc < 1, "percentage should be 0 < perc < 1"
+        super().__init__(bars, event_queue)
+        self.perc = perc
 
     def need_rebalance(self, _):
         raise NotImplementedError(
@@ -158,10 +166,10 @@ class SellWinners(metaclass=ABCMeta):
             for symbol in stock_list:
                 # sell all losers
                 latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
-                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * 1.20 > current_holdings[symbol]["average_trade_price"]:
+                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * (1 + self.perc) > current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
-                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * 0.80 < current_holdings[symbol]["average_trade_price"]:
+                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * (1 + self.perc) < current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], -current_holdings[symbol]['quantity'], OrderPosition.BUY, OrderType.MARKET, latest_close_price))
 

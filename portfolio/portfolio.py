@@ -112,8 +112,10 @@ class Portfolio(object, metaclass=ABCMeta):
         bars = {}
         for sym in self.symbol_list:
             bars[sym] = self.bars.get_latest_bars(sym, N=1)
-        self.current_holdings['datetime'] = bars[self.symbol_list[0]
-                                                 ]['datetime'][-1]
+        for ohlcv in bars.values():
+            if len(ohlcv['datetime']) >= 1:
+                self.current_holdings['datetime'] = ohlcv['datetime'][-1]
+                break
 
         # update holdings based off last trading day
         dh = dict((s, 0) for s in self.symbol_list)
