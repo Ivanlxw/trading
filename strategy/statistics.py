@@ -12,7 +12,8 @@ from trading.utilities.enum import OrderPosition
 
 class RelativeExtrema(Strategy):
     def __init__(self, bars, events, long_time, consecutive=2, percentile: int = 10, strat_contrarian: bool = True) -> None:
-        super().__init__(bars, events, f"RelativeExtrema: long={long_time}, percentile={percentile}")
+        super().__init__(bars, events,
+                         f"RelativeExtrema: long={long_time}, percentile={percentile}")
         self.lt = long_time
         self.consecutive = consecutive
         self.counter = 0
@@ -43,7 +44,8 @@ class RelativeExtrema(Strategy):
 
 class ExtremaBounce(Strategy):
     def __init__(self, bars, events, short_period: int, long_period: int, percentile: int = 25) -> None:
-        super().__init__(bars, events, f"Extremabounce: short={short_period}, long={long_period}, percentile={percentile}")
+        super().__init__(bars, events,
+                         f"Extremabounce: short={short_period}, long={long_period}, percentile={percentile}")
         self.short_period = short_period
         self.long_period = long_period
         self.percentile = percentile
@@ -89,6 +91,7 @@ class LongTermCorrTrend(Strategy):
             else:
                 order_posn = OrderPosition.SELL
             return [SignalEvent(ticker, bars_list["datetime"][-1], order_posn, bars_list["close"][-1], f"Corr: {corr}")]
+
 
 class EitherSide(Strategy):
     """
@@ -138,7 +141,8 @@ class Trending(Strategy):
         if bars_list is None:
             return
         trending_score = self._calc_trending_score(bars_list)
-        assert abs(trending_score) <= 1, f"Trending_score not < 1: {trending_score}"
+        assert abs(
+            trending_score) <= 1, f"Trending_score not < 1: {trending_score}"
         if trending_score > self.trending_score:
             return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"[BUY] trending_score: {trending_score}")]
         elif trending_score < -self.trending_score:

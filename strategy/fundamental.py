@@ -12,9 +12,11 @@ from trading.event import SignalEvent
 from trading.strategy.base import Strategy
 
 
-FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / "Data/data/fundamental/quarterly"
+FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / \
+    "Data/data/fundamental/quarterly"
 
-class FundamentalStrategy(Strategy, metaclass=ABCMeta): 
+
+class FundamentalStrategy(Strategy, metaclass=ABCMeta):
     @abstractmethod
     def __init__(self, bars: DataHandler, events, description="") -> None:
         super().__init__(bars, events, description)
@@ -37,13 +39,12 @@ class FundamentalStrategy(Strategy, metaclass=ABCMeta):
             filter(lambda x: x <= curr_date, self.bars.fundamental_data[sym].index))
         if len(fund_data_before) != 0:
             return fund_data_before[-1]
-    
+
     @abstractmethod
     def get_fundamental_data(self, symbol: str):
         raise NotImplementedError(
             "Use a subclass of FundamentalStrategy that implements get_fundamental_data")
 
-    
     @abstractmethod
     def _calculate_signal(self, sym) -> SignalEvent:
         raise NotImplementedError(
@@ -78,7 +79,7 @@ class FundamentalFunctor(FundamentalStrategy, ABC):
             return
         n_idx_qtr = self.bars.fundamental_data[symbol].index.get_loc(qtr)
         if n_idx_qtr < self.n:
-                return
+            return
         fundamental_vals = self.bars.fundamental_data[symbol].iloc[n_idx_qtr-self.n:n_idx_qtr]
         return fundamental_vals
 
@@ -88,6 +89,7 @@ class FundamentalFunctor(FundamentalStrategy, ABC):
 
 
 """ Helper functions for fundamental data """
+
 
 def at_most(fund_bars, fundamental, extrema):
     return fund_bars[fundamental][-1] < extrema
@@ -107,6 +109,7 @@ def last_is_min(fund_bars, fundamental):
 
 class FundRelativeMin(FundamentalFunctor):
     """ Minimum in last n quarters """
+
     def __init__(self, bars, events, fundamental: str, period: int, order_position: OrderPosition):
         super().__init__(bars, events, self._func, fundamental, period,
                          order_position, f"{fundamental} is lowest in {period} quarters")
@@ -117,6 +120,7 @@ class FundRelativeMin(FundamentalFunctor):
 
 class FundRelativeMax(FundamentalFunctor):
     """ Maximum in last n quarters """
+
     def __init__(self, bars, events, fundamental: str, period: int, order_position: OrderPosition):
         super().__init__(bars, events, self._func, fundamental, period,
                          order_position, f"{fundamental} is lowest in {period} quarters")
@@ -147,12 +151,14 @@ class FundAtMost(FundamentalFunctor):
 
 class DCFSignal(FundamentalStrategy):
     def __init__(self, bars: DataHandler, events,  buy_ratio, sell_ratio) -> None:
-        super().__init__(bars, events, f"DCFSignal: buy_ratio={buy_ratio}, sell_ratio={sell_ratio}")
+        super().__init__(bars, events,
+                         f"DCFSignal: buy_ratio={buy_ratio}, sell_ratio={sell_ratio}")
         self.buy_ratio = buy_ratio
         self.sell_ratio = sell_ratio
 
     def get_fundamental_data(self, symbol: str):
-        raise RuntimeError("get_fundamental_data() should not be called with DCFSignal")
+        raise RuntimeError(
+            "get_fundamental_data() should not be called with DCFSignal")
 
     def _calculate_signal(self, sym) -> List[SignalEvent]:
         # get most "recent" fundamental data

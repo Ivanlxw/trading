@@ -91,6 +91,7 @@ class BuyAndHoldStrategy(Strategy):
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
         if not self.bought[symbol]:
             bars = self.bars.get_latest_bars(symbol, N=1)
-            if bars is not None and len(bars['datetime']) > 0:  # there's an entry
+            # there's an entry
+            if bars is not None and len(bars['datetime']) > 0:
                 self.bought[symbol] = True
                 return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]

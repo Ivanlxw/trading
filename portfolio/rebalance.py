@@ -66,7 +66,7 @@ class RebalanceYearly(Rebalance):
         if self.need_rebalance(current_holdings):
             for symbol in stock_list:
                 latest_close_price = self.bars.get_latest_bars(symbol)[
-                                                               'close'][-1]
+                    'close'][-1]
                 if current_holdings[symbol]['quantity'] > 0:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
@@ -105,7 +105,8 @@ class RebalanceWeekly(RebalanceYearly):
 
 class SellLosers(metaclass=ABCMeta):
     ''' Sell stocks that have recorded >x% losses '''
-    def __init__(self, bars, event_queue, perc: float=0.05):
+
+    def __init__(self, bars, event_queue, perc: float = 0.05):
         assert perc < 1, "percentage should be 0 < perc < 1"
         super().__init__(bars, event_queue)
         self.perc = perc
@@ -119,7 +120,7 @@ class SellLosers(metaclass=ABCMeta):
             for symbol in stock_list:
                 # sell all losers
                 latest_close_price = self.bars.get_latest_bars(symbol)[
-                                                               'close'][-1]
+                    'close'][-1]
                 if current_holdings[symbol]["quantity"] > 0 and latest_close_price * (1 - self.perc) < current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
@@ -152,7 +153,8 @@ class SellLosersQuarterly(SellLosers, Rebalance):
 
 class SellWinners(metaclass=ABCMeta):
     ''' Sell stocks that have recorded >25% gain '''
-    def __init__(self, bars, event_queue, perc: float=0.20):
+
+    def __init__(self, bars, event_queue, perc: float = 0.20):
         assert perc < 1, "percentage should be 0 < perc < 1"
         super().__init__(bars, event_queue)
         self.perc = perc
@@ -160,12 +162,13 @@ class SellWinners(metaclass=ABCMeta):
     def need_rebalance(self, _):
         raise NotImplementedError(
             "Should implement need_rebalance().")
-            
+
     def rebalance(self, stock_list, current_holdings) -> None:
         if self.need_rebalance(current_holdings):
             for symbol in stock_list:
                 # sell all losers
-                latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
+                latest_close_price = self.bars.get_latest_bars(symbol)[
+                    'close'][-1]
                 if current_holdings[symbol]["quantity"] > 0 and latest_close_price * (1 + self.perc) > current_holdings[symbol]["average_trade_price"]:
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
@@ -189,24 +192,29 @@ class SellWinnersQuarterly(SellWinners, Rebalance):
         # every quarter
         return current_holdings['datetime'].is_quarter_start
 
+
 class SellWinnersMonthly(SellWinners, Rebalance):
     def need_rebalance(self, current_holdings):
         # every quarter
         return current_holdings['datetime'].day < 7 and current_holdings['datetime'].weekday() == 0
 
+
 class ExitShortMonthly(Rebalance):
     ''' Exit short positions monthly. Replicates the case where short positions cannot be held for too long '''
+
     def need_rebalance(self, current_holdings):
         # first monday of the month
         return current_holdings['datetime'].day < 7 and current_holdings['datetime'].weekday() == 0
-    
+
     def rebalance(self, stock_list, current_holdings) -> None:
         if self.need_rebalance(current_holdings):
             for symbol in stock_list:
                 if current_holdings[symbol]["quantity"] < 0:
-                    latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
+                    latest_close_price = self.bars.get_latest_bars(symbol)[
+                        'close'][-1]
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], abs(current_holdings[symbol]['quantity']), OrderPosition.BUY, OrderType.MARKET, latest_close_price))
+
 
 class StopLossThreshold(Rebalance):
     ''' Exits a position when losses exceeds specified threshold. Checks daily '''
@@ -215,7 +223,7 @@ class StopLossThreshold(Rebalance):
         super().__init__(bars, event_queue)
         assert threshold < 1, "threshold value should be < 1"
         self.threshold = threshold
-    
+
     def rebalance(self, stock_list, current_holdings) -> None:
         for symbol in stock_list:
             average_trade_price = current_holdings[symbol]["average_trade_price"]
@@ -225,10 +233,12 @@ class StopLossThreshold(Rebalance):
             latest_close_price = self.bars.get_latest_bars(symbol)['close'][-1]
             gains_ratio = latest_close_price / average_trade_price
             if curr_qty < 0 and gains_ratio > 1 + self.threshold:
-                self.event_queue.put(OrderEvent(symbol, current_holdings['datetime'], abs(curr_qty), OrderPosition.BUY, OrderType.MARKET, latest_close_price))
+                self.event_queue.put(OrderEvent(symbol, current_holdings['datetime'], abs(
+                    curr_qty), OrderPosition.BUY, OrderType.MARKET, latest_close_price))
             elif curr_qty > 0 and gains_ratio < 1 - self.threshold:
                 self.event_queue.put(OrderEvent(
                     symbol, current_holdings['datetime'], curr_qty, OrderPosition.SELL, OrderType.MARKET, latest_close_price))
+
 
 class TakeProfitThreshold(Rebalance):
     ''' Exits a position when losses exceeds specified threshold. Checks daily '''
@@ -236,7 +246,7 @@ class TakeProfitThreshold(Rebalance):
     def __init__(self, bars: DataHandler, event_queue, threshold) -> None:
         super().__init__(bars, event_queue)
         self.threshold = threshold
-    
+
     def rebalance(self, stock_list, current_holdings) -> None:
         for symbol in stock_list:
             average_trade_price = current_holdings[symbol]["average_trade_price"]
@@ -253,6 +263,8 @@ class TakeProfitThreshold(Rebalance):
                     symbol, current_holdings['datetime'], curr_qty, OrderPosition.SELL, OrderType.MARKET, latest_close_price))
 
 # Incomplete
+
+
 class SellLowestPerforming(Rebalance):
     def _days_hold(self, today: pd.Timestamp, last_traded_date: pd.Timestamp):
         if last_traded_date is None:

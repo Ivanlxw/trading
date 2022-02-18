@@ -12,7 +12,9 @@ from trading.utilities.utils import daily_date_range
 from trading.data.dataHandler import DataHandler
 from trading.strategy.statmodels.targets import _ema
 
-FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / "Data/data/fundamental/quarterly"
+FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / \
+    "Data/data/fundamental/quarterly"
+
 
 class Features(ABC):
     @abstractmethod
@@ -53,12 +55,13 @@ class QuarterlyFundamental(Features):
         if self.bars.fundamental_data is None:
             self.bars.get_historical_fundamentals()
         self.fundamental = fundamental
-    
+
     def get_fundamental_data(self, symbol: str):
         if os.path.exists(FUNDAMENTAL_DIR/f"{symbol}.csv"):
-            fund_data = pd.read_csv(FUNDAMENTAL_DIR/f"{symbol}.csv", index_col=0, header=0)
+            fund_data = pd.read_csv(
+                FUNDAMENTAL_DIR/f"{symbol}.csv", index_col=0, header=0)
             fund_data.index = fund_data.index.map(
-                    lambda x: pd.to_datetime(x, infer_datetime_format=True))
+                lambda x: pd.to_datetime(x, infer_datetime_format=True))
             fund_data = fund_data.sort_index()
             dr = daily_date_range(fund_data.index[0], fund_data.index[-1])
             fund_data = fund_data.reindex(dr, method="pad").fillna(0)
@@ -74,10 +77,12 @@ class QuarterlyFundamental(Features):
     def _formula(self, ohlc_data):
         sym: str = ohlc_data["symbol"]
         try:
-            fund_d = self.bars.fundamental_data[sym].loc[[self._relevant_qtr(sym, d) for d in ohlc_data["datetime"]], self.fundamental]
+            fund_d = self.bars.fundamental_data[sym].loc[[self._relevant_qtr(
+                sym, d) for d in ohlc_data["datetime"]], self.fundamental]
             return pd.Series(fund_d.values, index=ohlc_data["datetime"], name=self.fundamental)
         except KeyError:
             return pd.Series(0, index=ohlc_data["datetime"], name=self.fundamental)
+
 
 class DiffFromEMA(Features):
     def __init__(self, period: int) -> None:

@@ -38,13 +38,14 @@ class ComplexHighBeta(ComplexStrategyImpl):
                     SignalEvent(sym, index_signal.datetime, index_signal.order_position, price=price, other_details=f"ComplexHighBeta [{index_sym}]") for sym, _, price in beta_list
                 ]
             else:  # SELL, divest everything
-              for sym in self.bars.symbol_list:
-                close_prices = self.bars.get_latest_bars(sym)['close']
-                if len(close_prices) == 0:
-                  continue
-                signals += [
-                  SignalEvent(sym, index_signal.datetime, index_signal.order_position, price=close_prices[-1], other_details=f"ComplexHighBeta [EXITING: {index_sym}]") 
-                ]
+                for sym in self.bars.symbol_list:
+                    close_prices = self.bars.get_latest_bars(sym)['close']
+                    if len(close_prices) == 0:
+                        continue
+                    signals += [
+                        SignalEvent(sym, index_signal.datetime, index_signal.order_position,
+                                    price=close_prices[-1], other_details=f"ComplexHighBeta [EXITING: {index_sym}]")
+                    ]
         return signals
 
     def _calculate_internal(self) -> List[Tuple]:
@@ -66,7 +67,7 @@ class ComplexHighBeta(ComplexStrategyImpl):
             sym_hist_changes = self._helper_pct_change(
                 sym_hist_prices["close"])
             spy_var = np.var(spy_pct_changes)
-            if spy_var <= 0: 
+            if spy_var <= 0:
                 continue
             beta = np.cov(sym_hist_changes, spy_pct_changes)[
                 0][1] / spy_var

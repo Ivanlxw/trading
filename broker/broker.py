@@ -54,6 +54,7 @@ class Broker(ABC):
     def get_account_details(self):
         """ For live brokers """
 
+
 """
 TODO: 
 - include slippage and market impact
@@ -621,7 +622,6 @@ class AlpacaBroker(Broker):
     def get_quote(self, ticker):
         return self.api.get_last_quote(ticker)
 
-
     def update_portfolio_positions(self, port: Portfolio):
         cur_holdings = dict()
         for pos_details in self.get_positions():
@@ -631,4 +631,3 @@ class AlpacaBroker(Broker):
             )
         cur_holdings["cash"] = float(self.get_account_details().cash)
         port.current_holdings.update(cur_holdings)
-    

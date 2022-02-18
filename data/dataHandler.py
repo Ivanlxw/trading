@@ -45,7 +45,8 @@ class DataHandler(ABC):
         else:
             self.end_date = None
         self.frequency_type = frequency_type
-        self.csv_dir = Path(os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
+        self.csv_dir = Path(
+            os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
         assert self.csv_dir.is_dir()
 
         self.fmp_api_key = os.environ["FMP_API"]
@@ -98,7 +99,7 @@ class HistoricCSVDataHandler(DataHandler):
     """
 
     def __init__(self, events, symbol_list, start_date=None,
-                 end_date=None, frequency_type="daily", live:bool = False):
+                 end_date=None, frequency_type="daily", live: bool = False):
         """
         Args:
         - Event Queue on which to push MarketEvent information to
@@ -128,9 +129,9 @@ class HistoricCSVDataHandler(DataHandler):
         else:
             with ProcessPool(4) as p:
                 dfs = p.map(lambda s: (s, pd.read_csv(
-                        os.path.join(self.csv_dir, f"{s}.csv"),
-                        index_col=0,
-                    ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
+                    os.path.join(self.csv_dir, f"{s}.csv"),
+                    index_col=0,
+                ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
         dne = []
         for sym, temp_df in dfs:
             if self.start_date is None:
@@ -202,7 +203,8 @@ class HistoricCSVDataHandler(DataHandler):
                     bar[k] += [indi_bar_dict[k]]
             bar['symbol'] = symbol
             return bar
-        logging.error(f"Symbol ({symbol}) is not available in historical data set.")
+        logging.error(
+            f"Symbol ({symbol}) is not available in historical data set.")
 
     def update_bars(self):
         for s in self.symbol_data:
@@ -215,8 +217,10 @@ class HistoricCSVDataHandler(DataHandler):
                     self.latest_symbol_data[s].append(bar)
         self.events.put(MarketEvent())
 
+
 class DataFromDisk(HistoricCSVDataHandler):
     """ Takes in data from FMP API but uses TDA API for quotes """
+
     def __init__(self, events, symbol_list, start_date: str,
                  frequency_type="daily", live=False) -> None:
         if type(start_date) != str and re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start_date):
@@ -228,9 +232,11 @@ class DataFromDisk(HistoricCSVDataHandler):
         super().__init__(events, symbol_list,
                          start_date, end_date=None, frequency_type=self.frequency_type, live=live)
         self.live = live
-        self.data_fields = ['datetime', 'open', 'high', 'low', 'close', 'volume']
+        self.data_fields = ['datetime', 'open',
+                            'high', 'low', 'close', 'volume']
         self.continue_backtest = True
-        self.csv_dir = Path(os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
+        self.csv_dir = Path(
+            os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
         self._set_symbol_data()
 
     def __copy__(self):

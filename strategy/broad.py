@@ -55,13 +55,13 @@ class BroadFunctor(Strategy, BroadMarketStrategy):
             data = self.broad_data.iloc[date_idx-self.n: date_idx]  # ohlc data
             if self.functor(data):
                 return [SignalEvent(symbol, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)]
-    
+
     def describe(self):
         return {
-            self.__class__.__name__ : {'functor': self.functor.__name__,
-            'n': self.n,
-            'description': self.description,
-            'OrderPosition': self.order_position.name}
+            self.__class__.__name__: {'functor': self.functor.__name__,
+                                      'n': self.n,
+                                      'description': self.description,
+                                      'OrderPosition': self.order_position.name}
         }
 
 

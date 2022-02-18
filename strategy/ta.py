@@ -178,6 +178,8 @@ def cci(ohlc_data, period: int) -> list:
 
 
 """ Classes that hold strategy logic """
+
+
 class VolAboveSMA(TAFunctor):
     def __init__(self, bars, events, ta_period: int, order_position: OrderPosition):
         super().__init__(bars, events, self._func, ta_period, 1,

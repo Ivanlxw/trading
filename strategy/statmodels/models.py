@@ -52,7 +52,8 @@ class SkLearnRegModel(Strategy):
 
     def _rebalance_data(self, ohlc_data, sym):
         # replace curr_holdings with ohlc_data. Works the same
-        if self.rebalance_cond.need_rebalance({"datetime": ohlc_data["datetime"][-1]}): #  or self.live
+        # or self.live
+        if self.rebalance_cond.need_rebalance({"datetime": ohlc_data["datetime"][-1]}):
             ohlc_data = self.bars.get_latest_bars(sym, 500)
             if len(ohlc_data["datetime"]) < 50:
                 return
@@ -77,10 +78,10 @@ class SkLearnRegModel(Strategy):
             assert len(pred == 1)
             if pred[-1] > self.order_val:
                 return [SignalEvent(ohlc_data['symbol'], ohlc_data['datetime'][-1],
-                                   OrderPosition.BUY, ohlc_data['close'][-1], self.description)]
+                                    OrderPosition.BUY, ohlc_data['close'][-1], self.description)]
             elif pred[-1] < -self.order_val:
                 return [SignalEvent(ohlc_data['symbol'], ohlc_data['datetime'][-1],
-                                   OrderPosition.SELL, ohlc_data['close'][-1], self.description)]
+                                    OrderPosition.SELL, ohlc_data['close'][-1], self.description)]
 
 
 class SkLearnRegModelNormalized(SkLearnRegModel):
