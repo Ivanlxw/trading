@@ -22,6 +22,12 @@ from trading.utilities.enum import OrderPosition, OrderType
 
 
 class Broker(ABC):
+    def __init__(self, gatekeepers):
+        if gatekeepers is None or len(gatekeepers) == 0:
+            self.gatekeepers = [DummyGateKeeper()]
+        else:
+            self.gatekeepers = gatekeepers
+
     @abstractmethod
     def _filter_execute_order(self, event: OrderEvent) -> bool:
         """
@@ -47,12 +53,19 @@ class Broker(ABC):
 
     def check_filled_order(self):
         """ More for live trading, since we send q request with no response from web api, we need to check via API for pending & filled orders"""
+        pass 
 
     def update_portfolio_positions(self, port: Portfolio):
         """ Update for alpaca and TDA, use API call to update Portfolio class positions"""
+        pass
 
     def get_account_details(self):
         """ For live brokers """
+        pass
+
+    def check_gk(self, event: OrderEvent):
+        all(gk.check_gk(event, self.port.current_holdings)
+            for gk in self.gatekeepers)
 
 
 """
@@ -68,10 +81,7 @@ class SimulatedBroker(Broker):
         self.port: NaivePortfolio = port
         self.events = events
         self.order_queue = order_queue
-        if gatekeepers is None or len(gatekeepers) == 0:
-            self.gatekeepers = [DummyGateKeeper()]
-        else:
-            self.gatekeepers = gatekeepers
+        super().__init__(gatekeepers)
 
     def calculate_commission(self, quantity=None, fill_cost=None) -> float:
         return 0.0
@@ -110,7 +120,8 @@ class SimulatedBroker(Broker):
     def execute_order(self, event: OrderEvent) -> bool:
         if event is None:
             return False
-        if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
+        # all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers)
+        if event.type == "ORDER" and self.check_gk(event):
             for gk in self.gatekeepers:
                 event = gk._alter_order(event, self.port.current_holdings)
             if event is not None:
@@ -472,7 +483,6 @@ class TDABroker(Broker):
             }
         )
         prev_orders = res.json()
-        print(prev_orders[-1])  # TODO: remove me
         for order in prev_orders:
             if order['quantity'] == order['filledQuantity'] and \
                     order['instrument']['symbol'] == self.pending_orders[0] and \
@@ -513,12 +523,17 @@ class TDABroker(Broker):
         ), "positions does not exit in queries acct details"
         position_list = acct_details["securitiesAccount"]["positions"]
         cur_holdings = dict()
+        total = 0
         for pos_details in position_list:
+            inst_qty = pos_details["longQuantity"]
+            avg_trade_px = pos_details["averagePrice"]
             cur_holdings[pos_details["instrument"]["symbol"]] = dict(
-                quantity=pos_details["longQuantity"],
-                average_trade_price=pos_details["averagePrice"]
+                quantity=inst_qty,
+                average_trade_price=avg_trade_px
             )
+            total += inst_qty * avg_trade_px
         cur_holdings["cash"] = acct_details["securitiesAccount"]["currentBalances"]["cashBalance"]
+        cur_holdings['total'] = total + cur_holdings["cash"]
         port.current_holdings.update(cur_holdings)
         port.write_curr_holdings()
 
@@ -587,7 +602,7 @@ class AlpacaBroker(Broker):
                         )
                         event.trade_price = event.signal_price
                 except alpaca_trade_api.rest.APIError as e:
-                    log_message(f"{self.api.get_account()}")
+                    log_message(event.order_details())
                     log_message(
                         f"Status Code [{e.status_code}] {e.code}: {str(e)}\nResponse: {e.response}")
                     return False
@@ -624,10 +639,15 @@ class AlpacaBroker(Broker):
 
     def update_portfolio_positions(self, port: Portfolio):
         cur_holdings = dict()
+        total = 0
         for pos_details in self.get_positions():
+            inst_qty = float(pos_details.qty)
+            avg_trade_px = float(pos_details.avg_entry_price)
             cur_holdings[pos_details.symbol] = dict(
-                quantity=float(pos_details.qty),
-                average_trade_price=float(pos_details.avg_entry_price)
+                quantity=inst_qty,
+                average_trade_price=avg_trade_px
             )
+            total += inst_qty * avg_trade_px
         cur_holdings["cash"] = float(self.get_account_details().cash)
+        cur_holdings['total'] = total + cur_holdings["cash"]
         port.current_holdings.update(cur_holdings)

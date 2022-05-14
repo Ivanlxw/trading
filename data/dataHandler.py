@@ -134,9 +134,8 @@ class HistoricCSVDataHandler(DataHandler):
                 ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
         dne = []
         for sym, temp_df in dfs:
-            if self.start_date is None:
-                filtered = temp_df
-            elif self.start_date in temp_df.index:
+            filtered = temp_df
+            if self.start_date is not None and self.start_date in temp_df.index:
                 filtered = temp_df.iloc[temp_df.index.get_loc(
                     self.start_date):, ]
             else:

@@ -156,7 +156,7 @@ class Portfolio(object, metaclass=ABCMeta):
             self.current_holdings[event.order_event.symbol]["quantity"] = new_qty
             self.current_holdings['commission'] += event.commission
             self.current_holdings['cash'] -= (cash + event.commission)
-            # self.write_curr_holdings()
+            self.write_curr_holdings()
 
     def write_curr_holdings(self):
         curr_holdings_fp = ABSOLUTE_BT_DATA_DIR / \
