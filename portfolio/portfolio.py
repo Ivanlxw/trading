@@ -3,6 +3,7 @@ import json
 import os
 from math import fabs
 from pathlib import Path
+from trading.data.dataHandler import DataHandler
 from trading.utilities.enum import OrderPosition, OrderType
 import numpy as np
 import pandas as pd
@@ -19,8 +20,8 @@ from backtest.utilities.utils import log_message
 class Portfolio(object, metaclass=ABCMeta):
 
     @abstractmethod
-    def __init__(self, bars, events, order_queue, portfolio_name,
-                 initial_capital=100000.0, order_type=OrderType.LIMIT, rebalance=None, expires: int = 1):
+    def __init__(self, bars: DataHandler, events, order_queue, portfolio_name,
+                 initial_capital=100000.0, order_type=OrderType.LIMIT, rebalance=None, expires: int = 1, live:bool = False):
         """
         Parameters:
         bars - The DataHandler object with current market data.
@@ -39,6 +40,7 @@ class Portfolio(object, metaclass=ABCMeta):
         self.initial_capital = initial_capital
         self.expires = expires
         self.name = portfolio_name
+
         # checks if a saved current_holdings is alr present and if present,
         # load it. Otherwise construct
         self.current_holdings: dict = self.construct_current_holdings()
@@ -50,6 +52,7 @@ class Portfolio(object, metaclass=ABCMeta):
         self.order_type = order_type
         self.rebalance = rebalance if rebalance is not None else NoRebalance(
             self.events, self.bars)
+        self.live = self.bars.live
 
     def construct_all_holdings(self,):
         """
@@ -156,7 +159,8 @@ class Portfolio(object, metaclass=ABCMeta):
             self.current_holdings[event.order_event.symbol]["quantity"] = new_qty
             self.current_holdings['commission'] += event.commission
             self.current_holdings['cash'] -= (cash + event.commission)
-            self.write_curr_holdings()
+            if self.live:
+                self.write_curr_holdings()
 
     def write_curr_holdings(self):
         curr_holdings_fp = ABSOLUTE_BT_DATA_DIR / \
@@ -239,15 +243,26 @@ class NaivePortfolio(Portfolio):
     def generate_order(self, signal: SignalEvent) -> OrderEvent:
         return OrderEvent(signal.symbol, signal.datetime, self.qty, signal.order_position, self.order_type, signal.price)
 
+class FixedTradeValuePortfolio(Portfolio):
+    def __init__(self, bars, events, order_queue, trade_value, portfolio_name,
+                 initial_capital=100000.0, order_type=OrderType.LIMIT, rebalance=None, expires: int = 1):
+        super().__init__(bars, events, order_queue, portfolio_name,
+                         initial_capital, order_type, rebalance, expires)
+        self.trade_value = trade_value
+
+    def generate_order(self, signal: SignalEvent) -> OrderEvent:
+        latest_snapshot = self.bars.get_latest_bars(signal.symbol)
+        qty = self.trade_value // latest_snapshot['close'][-1]
+        if qty > 0: 
+            return OrderEvent(signal.symbol, signal.datetime, qty, signal.order_position, self.order_type, signal.price)
+
 
 class PercentagePortFolio(Portfolio):
     def __init__(self, bars, events, order_queue, percentage, portfolio_name,
                  initial_capital=100000.0, rebalance=None, order_type=OrderType.LIMIT,
                  mode='cash', expires: int = 1):
-        if percentage > 1:
-            self.perc = percentage / 100
-        else:
-            self.perc = percentage
+        assert percentage <= 1.0, f"percentage argument should be in decimals: {percentage}"
+        self.perc = percentage
         if mode not in ('cash', 'asset'):
             raise Exception('mode options: cash | asset')
         self.mode = mode
@@ -258,8 +273,8 @@ class PercentagePortFolio(Portfolio):
         latest_snapshot = self.bars.get_latest_bars(signal.symbol)
         if 'close' not in latest_snapshot or latest_snapshot['close'][-1] == 0.0:
             return
-        size = int(self.current_holdings["cash"] * self.perc / latest_snapshot['close'][-1]) if self.mode == 'cash' \
-            else int(fabs(self.all_holdings[-1]["total"]) * self.perc / latest_snapshot['close'][-1])
+        size = (self.current_holdings["cash"] * self.perc) // latest_snapshot['close'][-1] if self.mode == 'cash' \
+            else (self.current_holdings["total"] * self.perc) // latest_snapshot['close'][-1]
         if size <= 0:
             return
         return OrderEvent(signal.symbol, signal.datetime, size, signal.order_position, self.order_type, signal.price)
