@@ -33,7 +33,7 @@ class ComplexHighBeta(ComplexStrategyImpl):
             if index_signal.order_position == OrderPosition.BUY:
                 beta_list = self._calculate_internal()
                 if len(beta_list) == 0:
-                    return []
+                    continue
                 signals += [
                     SignalEvent(sym, index_signal.datetime, index_signal.order_position, price=price, other_details=f"ComplexHighBeta [{index_sym}]") for sym, _, price in beta_list
                 ]

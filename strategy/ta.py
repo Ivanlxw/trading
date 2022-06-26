@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import Callable, List, Optional
 import talib
 import numpy as np
 from trading.event import SignalEvent
@@ -26,15 +26,15 @@ class SimpleTACross(Strategy):
         return bars[-2] > TAs[-2] and bars[-1] < TAs[-1]
 
     def _calculate_signal(self, symbol) -> SignalEvent:
-        bars = self.bars.get_latest_bars(
-            symbol, N=(self.timeperiod+3))  # list of tuples
-        if len(bars['datetime']) != self.timeperiod+3:
+        ohlc = self.bars.get_latest_bars(
+            symbol, N=self.timeperiod+3)  # list of tuples
+        if len(ohlc['datetime']) != self.timeperiod+3:
             return
-        TAs = self.ma_type(bars, self.timeperiod)
-        if bars['close'][-2] > TAs[-2] and bars['close'][-1] < TAs[-1]:
-            return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
-        elif bars['close'][-2] < TAs[-2] and bars['close'][-1] > TAs[-1]:
-            return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY,  bars['close'][-1])]
+        TAs = self.ma_type(ohlc, self.timeperiod)
+        if ohlc['close'][-2] > TAs[-2] and ohlc['close'][-1] < TAs[-1]:
+            return [SignalEvent(symbol, ohlc['datetime'][-1], OrderPosition.SELL, ohlc['close'][-1])]
+        elif ohlc['close'][-2] < TAs[-2] and ohlc['close'][-1] > TAs[-1]:
+            return [SignalEvent(symbol, ohlc['datetime'][-1], OrderPosition.BUY,  ohlc['close'][-1])]
 
 
 class DoubleMAStrategy(SimpleTACross):
@@ -83,7 +83,8 @@ class MeanReversionTA(SimpleTACross):
         exit:bool - true means exit on "cross", else exit on "bb"
     '''
 
-    def __init__(self, bars, events, timeperiod: int, ma_type, sd: float = 2, exit: bool = True):
+    def __init__(self, bars, events, timeperiod: int, ma_type: Callable, sd: float = 2, exit: bool = True):
+        assert isinstance(ma_type, Callable)
         super().__init__(bars, events, timeperiod, ma_type,
                          f"MeanReversionTA: ma_type={ma_type.__name__}, sd={sd}, exit_ma_cross={exit}")
         self.sd_multiplier = sd
@@ -124,6 +125,30 @@ class MeanReversionTA(SimpleTACross):
             elif self._break_up(close_prices, TAs) or \
                     (close_prices[-1] > (TAs[-1] - boundary) and close_prices[-2] < (TAs[-2] - boundary)):
                 return [SignalEvent(bars['symbol'], bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
+
+
+class MABounce(Strategy):
+    """ 
+        Close bounce off MA: If upwards = BUY, downward = SELL
+    """
+
+    def __init__(self, bars, events, ta_func, ta_period: int):
+        super().__init__(bars, events, description=f"{ta_func.__name__}")
+        self.ta_func = ta_func
+        self.ta_period = ta_period
+
+    def _get_signal(self, ohlc_data, latest_ma) -> Optional[OrderPosition]:
+        if ohlc_data["close"][-1] > ohlc_data["open"][-1] and ohlc_data["open"][-1] > latest_ma and ohlc_data["low"][-1] < latest_ma:
+            return OrderPosition.BUY
+        elif ohlc_data["close"][-1] < ohlc_data["open"][-1] and ohlc_data["open"][-1] < latest_ma and ohlc_data["high"][-1] > latest_ma:
+            return OrderPosition.SELL
+
+    def _calculate_signal(self, ticker) -> List[SignalEvent]:
+        ohlc_data = self.bars.get_latest_bars(ticker, self.ta_period+1)
+        latest_ma = self.ta_func(ohlc_data, self.ta_period)[-1]
+        signal_pos = self._get_signal(ohlc_data, latest_ma)
+        if signal_pos != None:
+            return [SignalEvent(ticker, ohlc_data['datetime'][-1], signal_pos, ohlc_data['close'][-1])]
 
 
 class TAFunctor(Strategy, ABC):

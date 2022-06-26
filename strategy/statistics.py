@@ -11,18 +11,18 @@ from trading.utilities.enum import OrderPosition
 
 
 class RelativeExtrema(Strategy):
-    def __init__(self, bars, events, long_time, consecutive=2, percentile: int = 10, strat_contrarian: bool = True) -> None:
+    def __init__(self, bars, events, extrema_period, consecutive=2, percentile: int = 10, strat_contrarian: bool = True) -> None:
         super().__init__(bars, events,
-                         f"RelativeExtrema: long={long_time}, percentile={percentile}")
-        self.lt = long_time
+                         f"RelativeExtrema: extrema_period={extrema_period}, percentile={percentile}")
+        self.extrema_period = extrema_period
         self.consecutive = consecutive
         self.counter = 0
         self.percentile = percentile
         self.contrarian = strat_contrarian
 
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
-        bars = self.bars.get_latest_bars(symbol, N=self.lt)
-        if len(bars['datetime']) != self.lt:
+        bars = self.bars.get_latest_bars(symbol, N=self.extrema_period)
+        if len(bars['datetime']) != self.extrema_period:
             return
         if bars["close"][-1] < np.percentile(bars["close"], self.percentile):
             if self.contrarian:
@@ -108,7 +108,7 @@ class EitherSide(Strategy):
         bars_list = self.get_bars(ticker)
         if bars_list is None:
             return
-        side = (max(bars_list['close']) / bars_list['close'][-1] - 1) * 100
+        side = (np.mean(bars_list['close']) / bars_list['close'][-1] - 1)
         if side > self.side:
             return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"Upside: {side}")]
         elif side < -self.side:

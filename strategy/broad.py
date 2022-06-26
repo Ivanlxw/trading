@@ -129,12 +129,12 @@ def low_cci(bars, events, broad_sym, n: int, order_position: OrderPosition):
 
 
 def market_corr_value_le(bars, events, broad_sym, n: int, corr: float, order_position: OrderPosition):
-    """ value = True: buy when market price corr < corr. Otherwise Sell"""
+    """ value = True: buy when market price corr < corr."""
     def _mkt_corr(data): return _BROAD_CORR_LE(data, n, corr)
     return BroadFunctor(bars, events, broad_sym, _mkt_corr, n, order_position, description=f"market_corr_value_le: {broad_sym} corr less than {corr}")
 
 
 def market_corr_value_ge(bars, events, broad_sym, n: int, corr: float, order_position: OrderPosition):
-    """ value = True: buy when market price corr > corr. Otherwise Sell"""
+    """ value = True: buy when market price corr > corr."""
     def _mkt_corr(data): return _BROAD_CORR_GE(data, n, corr)
     return BroadFunctor(bars, events, broad_sym, _mkt_corr, n, order_position, description=f"market_corr_value_ge: {broad_sym} corr more than {corr}")

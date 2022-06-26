@@ -40,7 +40,7 @@ class MultipleAllStrategy(MultipleStrategy):
             if sig is None:
                 return
             strategies += sig
-        if len(strategies) > 0 and self.order_same_dir(strategies):
+        if len(strategies) == len(self.strategies) and self.order_same_dir(strategies):
             return self.generate_final_strat(strategies)
         return []
 
@@ -52,8 +52,9 @@ class MultipleAllStrategy(MultipleStrategy):
 
 
 class MultipleAnyStrategy(MultipleStrategy):
-    def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
+    def __init__(self, bars, events, strategies: List[Strategy], min_matches: int=1, description="") -> None:
         super().__init__(bars, events, strategies, description)
+        self.min_matches = min_matches  # number of same signal to register signal
 
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
         strategies = []
@@ -62,7 +63,7 @@ class MultipleAnyStrategy(MultipleStrategy):
             if sig is None:
                 continue
             strategies += sig
-        if len(strategies) != 0 and self.order_same_dir(strategies):
+        if len(strategies) >= self.min_matches and self.order_same_dir(strategies):
             return self.generate_final_strat(strategies)
         return []
 
