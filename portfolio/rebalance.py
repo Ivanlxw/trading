@@ -121,10 +121,10 @@ class SellLosers(metaclass=ABCMeta):
                 # sell all losers
                 latest_close_price = self.bars.get_latest_bars(symbol)[
                     'close'][-1]
-                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * (1 - self.perc) < current_holdings[symbol]["average_trade_price"]:
+                if current_holdings[symbol]["quantity"] > 0 and latest_close_price < current_holdings[symbol]["average_trade_price"] * (1 - self.perc):
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
-                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * (1 - self.perc) > current_holdings[symbol]["average_trade_price"]:
+                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price > current_holdings[symbol]["average_trade_price"] * (1 + self.perc):
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], -current_holdings[symbol]['quantity'], OrderPosition.BUY, OrderType.MARKET, latest_close_price))
 
@@ -150,6 +150,12 @@ class SellLosersQuarterly(SellLosers, Rebalance):
         # every quarter
         return current_holdings['datetime'].is_quarter_start
 
+class SellLosersMonthly(SellLosers, Rebalance):
+    ''' Sell stocks that have recorded >10% losses at the start of the quarter '''
+
+    def need_rebalance(self, current_holdings):
+        # every month - every 4 tuesdays
+        return current_holdings['datetime'].week % 4 == 1 and current_holdings['datetime'].weekday() == 1
 
 class SellWinners(metaclass=ABCMeta):
     ''' Sell stocks that have recorded >25% gain '''
@@ -169,10 +175,10 @@ class SellWinners(metaclass=ABCMeta):
                 # sell all losers
                 latest_close_price = self.bars.get_latest_bars(symbol)[
                     'close'][-1]
-                if current_holdings[symbol]["quantity"] > 0 and latest_close_price * (1 + self.perc) > current_holdings[symbol]["average_trade_price"]:
+                if current_holdings[symbol]["quantity"] > 0 and latest_close_price > current_holdings[symbol]["average_trade_price"] * (1 + self.perc):
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], current_holdings[symbol]['quantity'], OrderPosition.SELL, OrderType.MARKET, latest_close_price))
-                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price * (1 + self.perc) < current_holdings[symbol]["average_trade_price"]:
+                elif current_holdings[symbol]["quantity"] < 0 and latest_close_price < current_holdings[symbol]["average_trade_price"] * (1 - self.perc):
                     self.event_queue.put(OrderEvent(
                         symbol, current_holdings['datetime'], -current_holdings[symbol]['quantity'], OrderPosition.BUY, OrderType.MARKET, latest_close_price))
 
