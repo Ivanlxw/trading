@@ -22,7 +22,8 @@ from trading.utilities.enum import OrderPosition, OrderType
 
 
 class Broker(ABC):
-    def __init__(self, gatekeepers):
+    def __init__(self, port, gatekeepers):
+        self.port = port
         if gatekeepers is None or len(gatekeepers) == 0:
             self.gatekeepers = [DummyGateKeeper()]
         else:
@@ -64,7 +65,7 @@ class Broker(ABC):
         pass
 
     def check_gk(self, event: OrderEvent):
-        all(gk.check_gk(event, self.port.current_holdings)
+        return all(gk.check_gk(event, self.port.current_holdings)
             for gk in self.gatekeepers)
 
 
@@ -77,11 +78,10 @@ TODO:
 
 class SimulatedBroker(Broker):
     def __init__(self, bars, port, events, order_queue, gatekeepers: List[GateKeeper] = None):
+        super().__init__(port, gatekeepers)
         self.bars = bars
-        self.port: NaivePortfolio = port
         self.events = events
         self.order_queue = order_queue
-        super().__init__(gatekeepers)
 
     def calculate_commission(self, quantity=None, fill_cost=None) -> float:
         return 0.0
@@ -120,7 +120,6 @@ class SimulatedBroker(Broker):
     def execute_order(self, event: OrderEvent) -> bool:
         if event is None:
             return False
-        # all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers)
         if event.type == "ORDER" and self.check_gk(event):
             for gk in self.gatekeepers:
                 event = gk._alter_order(event, self.port.current_holdings)
@@ -539,21 +538,17 @@ class TDABroker(Broker):
 
 
 class AlpacaBroker(Broker):
-    def __init__(self, port, event_queue, gatekeepers: List[GateKeeper] = None):
-        self.port: NaivePortfolio = port
+    def __init__(self, port, event_queue, creds: dict, gatekeepers: List[GateKeeper] = None):
+        super().__init__(port, gatekeepers)
         self.events = event_queue
         self.base_url = "https://paper-api.alpaca.markets"
         self.data_url = "https://data.alpaca.markets/v2"
         self.api = alpaca_trade_api.REST(
-            os.environ["alpaca_key_id"],
-            os.environ["alpaca_secret_key"],
+            creds["alpaca_key_id"],
+            creds["alpaca_secret_key"],
             self.base_url,
             api_version="v2",
         )
-        if gatekeepers is None or len(gatekeepers) == 0:
-            self.gatekeepers = [DummyGateKeeper()]
-        else:
-            self.gatekeepers = gatekeepers
 
     def _alpaca_endpoint(self, url, args: str):
         return requests.get(

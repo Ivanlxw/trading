@@ -17,10 +17,6 @@ NY = 'America/New_York'
 frequency_types = ["1min", "5min", "15min", "30min", "1hour", "4hour", "daily"]
 
 
-def get_tiingo_endpoint(endpoint: str, args: str):
-    return f"https://api.tiingo.com/tiingo/{endpoint}?{args}&token={os.environ['TIINGO_API']}"
-
-
 class DataHandler(ABC):
     """
     The goal of a (derived) DataHandler object is to output a generated
@@ -31,7 +27,7 @@ class DataHandler(ABC):
     system will be treated identically by the rest of the backtesting suite.
     """
 
-    def __init__(self, events, symbol_list, frequency_type, start_date: str = None, end_date: str = None):
+    def __init__(self, events, symbol_list, creds: dict, frequency_type, start_date: str, end_date: str, live: bool):
         self.events = events
         self.symbol_list = symbol_list
         if start_date is None:
@@ -49,8 +45,10 @@ class DataHandler(ABC):
             os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
         assert self.csv_dir.is_dir()
 
-        self.fmp_api_key = os.environ["FMP_API"]
+        self.creds = creds
+        self.fmp_api_key = self.creds["FMP_API"]
         self.fundamental_data = None
+        self.live = live
 
     def _to_generator(self):
         for s in self.symbol_data:
@@ -98,7 +96,7 @@ class HistoricCSVDataHandler(DataHandler):
     obtain "latest" bar similar to live trading (drip feed)
     """
 
-    def __init__(self, events, symbol_list, start_date=None,
+    def __init__(self, events, symbol_list, creds, start_date=None,
                  end_date=None, frequency_type="daily", live: bool = False):
         """
         Args:
@@ -107,7 +105,7 @@ class HistoricCSVDataHandler(DataHandler):
         - a list of symbols determining universal stocks
         """
         assert frequency_type in frequency_types
-        super().__init__(events, symbol_list, frequency_type, start_date, end_date)
+        super().__init__(events, symbol_list, creds, frequency_type, start_date, end_date, live)
         self.start_date_str = start_date
         self.end_date_str = end_date
         self.frequency_type = frequency_type
@@ -162,7 +160,7 @@ class HistoricCSVDataHandler(DataHandler):
             else:
                 comb_index.union(self.symbol_data[sym].index.drop_duplicates())
 
-        logging.info(f"[_open_convert_csv_files] Excluded symbols: {dne}")
+        log_message(f"[_open_convert_csv_files] Excluded symbols: {dne}")
         # reindex
         for s in self.symbol_data:
             self.symbol_data[s] = self.symbol_data[s].reindex(
@@ -173,7 +171,7 @@ class HistoricCSVDataHandler(DataHandler):
 
     def __copy__(self):
         return HistoricCSVDataHandler(
-            self.events, self.symbol_list,
+            self.events, self.symbol_list, self.creds,
             self.start_date_str, self.end_date_str, self.frequency_type
         )
 
@@ -220,7 +218,7 @@ class HistoricCSVDataHandler(DataHandler):
 class DataFromDisk(HistoricCSVDataHandler):
     """ Takes in data from FMP API but uses TDA API for quotes """
 
-    def __init__(self, events, symbol_list, start_date: str,
+    def __init__(self, events, symbol_list, creds: dict, start_date: str,
                  frequency_type="daily", live=False) -> None:
         if type(start_date) != str and re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start_date):
             raise Exception(
@@ -228,9 +226,8 @@ class DataFromDisk(HistoricCSVDataHandler):
         assert frequency_type in ["1min", "5min",
                                   "10min", "15min", "30min", "daily"]
         self.frequency_type = frequency_type
-        super().__init__(events, symbol_list,
+        super().__init__(events, symbol_list, creds,
                          start_date, end_date=None, frequency_type=self.frequency_type, live=live)
-        self.live = live
         self.data_fields = ['datetime', 'open',
                             'high', 'low', 'close', 'volume']
         self.continue_backtest = True
