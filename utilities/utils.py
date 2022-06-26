@@ -1,33 +1,41 @@
 import os
 from pathlib import Path
+from typing import List
 import pandas as pd
 
 from backtest.utilities.utils import remove_bs
 
 ABSOLUTE_BT_DATA_DIR = Path(os.environ['WORKSPACE_ROOT']) / "Data"
-US_STOCK_UNIVERSE = []
-DOW_LIST = []
-SNP100_LIST = []
-SNP500_LIST = []
-NASDAQ_LIST = []
-ETF_LIST = []
-sym_filenames = ["dow.txt", "snp100.txt", "snp500.txt", "nasdaq.txt"]
-for file, l in zip(sym_filenames, [DOW_LIST, SNP100_LIST, SNP500_LIST, NASDAQ_LIST]):
-    with open(ABSOLUTE_BT_DATA_DIR / file) as fin:
-        l += list(map(remove_bs, fin.readlines()))
 
-with open(ABSOLUTE_BT_DATA_DIR / "us_stocks.txt") as fin:
-    US_STOCK_UNIVERSE += list(map(remove_bs, fin.readlines()))
-
-DOW_LIST = list(set(DOW_LIST))
-SNP500_LIST = list(set(SNP500_LIST))
-NASDAQ_LIST = list(set(NASDAQ_LIST))
-
-for file in sym_filenames:
+def get_etf_list():
     with open(ABSOLUTE_BT_DATA_DIR / "etf.txt") as fin:
-        ETF_LIST += list(map(remove_bs, fin.readlines()))
-ETF_LIST = list(set(ETF_LIST))
+        l = list(map(remove_bs, fin.readlines()))
+    return l
 
+def get_snp500_list():
+    with open(ABSOLUTE_BT_DATA_DIR / "snp500.txt") as fin:
+        l = list(map(remove_bs, fin.readlines()))
+    return l
+
+def get_us_stocks():
+    with open(ABSOLUTE_BT_DATA_DIR / "us_stocks.txt") as fin:
+        l += list(map(remove_bs, fin.readlines()))
+    return l 
+
+def get_universe():
+    sym_filenames = ["dow.txt", "snp100.txt", "snp500.txt", "nasdaq.txt", "etf.txt"]
+    l = []
+    for file in sym_filenames:
+        with open(ABSOLUTE_BT_DATA_DIR / file) as fin:
+            l += list(map(remove_bs, fin.readlines()))
+    return l
+
+def get_trading_universe(fp_list: List[Path]) -> set:
+    l = []
+    for fp in fp_list:
+        with open(fp) as fin:
+            l += list(map(remove_bs, fin.readlines()))
+    return set(l)
 
 def convert_ms_to_timestamp(time_ms: int):
     convert = pd.Timestamp(int(time_ms), unit="ms")
