@@ -85,8 +85,7 @@ class EnoughCash(GateKeeper):
 
 
 class MaxPortfolioPosition(GateKeeper):
-    def __init__(self, bars: DataHandler, max_pos: int) -> None:
-        self.bars = bars
+    def __init__(self, max_pos: int) -> None:
         self.max_pos = max_pos
 
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
@@ -107,14 +106,36 @@ class MaxPortfolioPosition(GateKeeper):
         return order_event
 
 
+class MaxInstPosition(GateKeeper):
+    def __init__(self, max_pos: int) -> None:
+        self.max_pos = max_pos
+
+    def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
+        inst_new_pos = order_event.quantity + current_holdings[order_event.symbol]["quantity"] * (
+            1 if order_event.direction == OrderPosition.BUY else -1)
+        if not inst_new_pos < self.max_pos:
+            log_message(
+                f'[Gatekeepers] {order_event.symbol}: inst_new_pos={inst_new_pos}, max_pos={self.max_pos}')
+        return inst_new_pos < self.max_pos
+
+    def _alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
+        if order_event.direction == OrderPosition.BUY:
+            inst_new_pos = order_event.quantity + \
+                current_holdings[order_event.symbol]["quantity"] * \
+                (1 if order_event.direction == OrderPosition.BUY else -1)
+            order_event.quantity = min(
+                self.max_pos - inst_new_pos, order_event.quantity)
+            return order_event
+        return order_event
+
+
 class PremiumLimit(GateKeeper):
     """ Don't buy if premium is > certain amount"""
 
-    def __init__(self, bars: DataHandler, premium_limit: float) -> None:
-        super().__init__(bars)
+    def __init__(self, premium_limit: float) -> None:
         self.premium_limit = premium_limit
 
-    def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
+    def check_gk(self, order_event: OrderEvent, _: dict) -> bool:
         is_within_premium_limit: bool = not (
             order_event.direction == OrderPosition.BUY and order_event.signal_price > self.premium_limit)
         if not is_within_premium_limit:

@@ -597,9 +597,8 @@ class AlpacaBroker(Broker):
                         )
                         event.trade_price = event.signal_price
                 except alpaca_trade_api.rest.APIError as e:
-                    log_message(event.order_details())
                     log_message(
-                        f"Status Code [{e.status_code}] {e.code}: {str(e)}\nResponse: {e.response}")
+                        f"Status Code [{e.status_code}] {e.code}: {str(e)},order_details={event.order_details()}")
                     return False
                 if order.status == "accepted":
                     log_message(f"Order filled: {order}")

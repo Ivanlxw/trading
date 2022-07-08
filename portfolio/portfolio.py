@@ -13,10 +13,10 @@ from abc import ABCMeta, abstractmethod
 from trading.event import FillEvent, OrderEvent, SignalEvent
 from backtest.performance import create_sharpe_ratio, create_drawdowns
 from trading.portfolio.rebalance import NoRebalance
-from trading.utilities.utils import ABSOLUTE_BT_DATA_DIR, convert_ms_to_timestamp
+from trading.utilities.utils import convert_ms_to_timestamp
 from backtest.utilities.utils import log_message
 
-
+ABSOLUTE_BT_DATA_DIR = Path(os.environ["WORKSPACE_ROOT"])
 class Portfolio(object, metaclass=ABCMeta):
 
     @abstractmethod
