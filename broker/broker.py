@@ -121,8 +121,6 @@ class SimulatedBroker(Broker):
         if event is None:
             return False
         if event.type == "ORDER" and self.check_gk(event):
-            for gk in self.gatekeepers:
-                event = gk._alter_order(event, self.port.current_holdings)
             if event is not None:
                 latest_snapshot = self.bars.get_latest_bars(event.symbol)
                 if event.order_type == OrderType.LIMIT:
@@ -275,8 +273,6 @@ class IBBroker(Broker, EWrapper, EClient):
         if event is None:
             return False
         if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
-            for gk in self.gatekeepers:
-                event = gk._alter_order(event, self.port.current_holdings)
             if event is not None:
                 asset = event.symbol
                 asset_type = "STK"
@@ -436,8 +432,6 @@ class TDABroker(Broker):
         if event is None:
             return False
         if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
-            for gk in self.gatekeepers:
-                event = gk._alter_order(event, self.port.current_holdings)
             if event is not None:
                 data = {
                     "orderType": "MARKET" if event.order_type == OrderType.MARKET else "LIMIT",
@@ -572,8 +566,6 @@ class AlpacaBroker(Broker):
             return False
         side = "buy" if event.direction == OrderPosition.BUY else "sell"
         if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
-            for gk in self.gatekeepers:
-                event = gk._alter_order(event, self.port.current_holdings)
             if event is not None:
                 try:
                     if event.order_type == OrderType.LIMIT:

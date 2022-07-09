@@ -26,7 +26,7 @@ class Portfolio(object, metaclass=ABCMeta):
         Parameters:
         bars - The DataHandler object with current market data.
         events - The Event Queue object.
-        start_date - The start date (bar) of the portfolio.
+        start_ms - The start date in millisecs (bar) of the portfolio.
         initial_capital - The starting capital in USD.
         """
         self.bars = bars
@@ -36,7 +36,7 @@ class Portfolio(object, metaclass=ABCMeta):
         ))  # if self.bars.symbol_data else self.bars.symbol_list
         log_message(
             f"{len(self.symbol_list)} symbols loaded: {str(self.symbol_list)}")
-        self.start_date = pd.Timestamp(self.bars.start_date, unit="ms")
+        self.start_ms = pd.Timestamp(self.bars.start_ms, unit="ms")
         self.initial_capital = initial_capital
         self.expires = expires
         self.name = portfolio_name
@@ -67,7 +67,7 @@ class Portfolio(object, metaclass=ABCMeta):
         })
         """
         d = dict((s, 0.0) for s in self.symbol_list)
-        d['datetime'] = self.start_date
+        d['datetime'] = self.start_ms
         d['cash'] = self.initial_capital
         d['commission'] = 0.0
         d['total'] = self.initial_capital
@@ -80,7 +80,7 @@ class Portfolio(object, metaclass=ABCMeta):
         }) for s in self.symbol_list)
         d['cash'] = self.initial_capital
         d['commission'] = 0.0
-        d['datetime'] = self.start_date
+        d['datetime'] = self.start_ms
         d['total'] = d['cash']
         return d
 
@@ -205,7 +205,7 @@ class Portfolio(object, metaclass=ABCMeta):
 
         stats = [
             ("Portfolio name", f"{self.name}"),
-            ("Start date",  f"{self.start_date}"),
+            ("Start date",  f"{self.start_ms}"),
             ("Total Return", "%0.2f%%" % ((total_return - 1.0) * 100.0)),
             ("Sharpe Ratio", "%0.2f" % sharpe_ratio),
             ("Max Drawdown", "%0.2f%%" % (max_dd * 100.0)),
@@ -244,17 +244,21 @@ class NaivePortfolio(Portfolio):
         return OrderEvent(signal.symbol, signal.datetime, self.qty, signal.order_position, self.order_type, signal.price)
 
 class FixedTradeValuePortfolio(Portfolio):
-    def __init__(self, bars, events, order_queue, trade_value, portfolio_name,
+    def __init__(self, bars, events, order_queue, trade_value, max_qty, portfolio_name,
                  initial_capital=100000.0, order_type=OrderType.LIMIT, rebalance=None, expires: int = 1):
         super().__init__(bars, events, order_queue, portfolio_name,
                          initial_capital, order_type, rebalance, expires)
         self.trade_value = trade_value
+        self.max_qty = max_qty
 
     def generate_order(self, signal: SignalEvent) -> OrderEvent:
         latest_snapshot = self.bars.get_latest_bars(signal.symbol)
         qty = self.trade_value // latest_snapshot['close'][-1]
-        if qty > 0: 
+        if qty > 0 and self.max_qty is not None: 
+            return OrderEvent(signal.symbol, signal.datetime, min(qty, self.max_qty), signal.order_position, self.order_type, signal.price)
+        elif qty > 0:
             return OrderEvent(signal.symbol, signal.datetime, qty, signal.order_position, self.order_type, signal.price)
+
 
 
 class PercentagePortFolio(Portfolio):

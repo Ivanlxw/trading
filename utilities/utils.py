@@ -3,44 +3,6 @@ from pathlib import Path
 from typing import List
 import pandas as pd
 
-from backtest.utilities.utils import remove_bs
-
-
-def get_etf_list(base_dir: Path):
-    with open(base_dir / "Data/universe/etf.txt") as fin:
-        l = list(map(remove_bs, fin.readlines()))
-    return l
-
-
-def get_snp500_list(base_dir: Path):
-    with open(base_dir / "Data/universe/snp500.txt") as fin:
-        l = list(map(remove_bs, fin.readlines()))
-    return l
-
-
-def get_us_stocks(base_dir: Path):
-    with open(base_dir / "Data/universe/us_stocks.txt") as fin:
-        l += list(map(remove_bs, fin.readlines()))
-    return l
-
-
-def get_universe(base_dir: Path):
-    sym_filenames = ["dow.txt", "snp100.txt",
-                     "snp500.txt", "nasdaq.txt", "etf.txt"]
-    l = []
-    for file in sym_filenames:
-        with open(base_dir / "Data/universe" / file) as fin:
-            l += list(map(remove_bs, fin.readlines()))
-    return l
-
-
-def get_trading_universe(fp_list: List[Path]) -> set:
-    l = []
-    for fp in fp_list:
-        with open(fp) as fin:
-            l += list(map(remove_bs, fin.readlines()))
-    return set(l)
-
 
 def convert_ms_to_timestamp(time_ms: int):
     convert = pd.Timestamp(int(time_ms), unit="ms")

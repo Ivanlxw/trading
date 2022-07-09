@@ -25,21 +25,16 @@ class DataHandler(ABC):
     This will replicate how a live strategy would function as current
     market data would be sent "down the pipe". Thus a historic and live
     system will be treated identically by the rest of the backtesting suite.
+
+    Arguments:
+    - start_ms, end_ms: in millisecs
     """
 
-    def __init__(self, events, symbol_list, creds: dict, frequency_type, start_date: str, end_date: str, live: bool):
+    def __init__(self, events, symbol_list, creds: dict, frequency_type, start_ms: int, end_ms: int, live: bool):
         self.events = events
         self.symbol_list = symbol_list
-        if start_date is None:
-            self.start_date = None
-        else:
-            self.start_date = pd.to_datetime(
-                start_date, infer_datetime_format=True).value // 10 ** 6  # milliseconds
-        if end_date != None:
-            self.end_date = pd.to_datetime(
-                end_date, infer_datetime_format=True).value // 10 ** 6
-        else:
-            self.end_date = None
+        self.start_ms = start_ms
+        self.end_ms = end_ms
         self.frequency_type = frequency_type
         self.csv_dir = Path(
             os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
@@ -96,8 +91,8 @@ class HistoricCSVDataHandler(DataHandler):
     obtain "latest" bar similar to live trading (drip feed)
     """
 
-    def __init__(self, events, symbol_list, creds, start_date=None,
-                 end_date=None, frequency_type="daily", live: bool = False):
+    def __init__(self, events, symbol_list, creds, start_ms: int = None,
+                 end_ms: int = None, frequency_type="daily", live: bool = False):
         """
         Args:
         - Event Queue on which to push MarketEvent information to
@@ -105,9 +100,7 @@ class HistoricCSVDataHandler(DataHandler):
         - a list of symbols determining universal stocks
         """
         assert frequency_type in frequency_types
-        super().__init__(events, symbol_list, creds, frequency_type, start_date, end_date, live)
-        self.start_date_str = start_date
-        self.end_date_str = end_date
+        super().__init__(events, symbol_list, creds, frequency_type, start_ms, end_ms, live)
         self.frequency_type = frequency_type
         self.symbol_data = {}
         self.latest_symbol_data = dict((s, []) for s in self.symbol_list)
@@ -133,25 +126,13 @@ class HistoricCSVDataHandler(DataHandler):
         dne = []
         for sym, temp_df in dfs:
             filtered = temp_df
-            if self.start_date is not None and self.start_date in temp_df.index:
-                filtered = temp_df.iloc[temp_df.index.get_loc(
-                    self.start_date):, ]
-            else:
-                logging.info(
-                    f"{sym} does not have {self.start_date} in date index, not included")
-                dne.append(sym)
-                continue
-
-            if self.end_date is not None:
-                if self.end_date in temp_df.index:
-                    filtered = filtered.iloc[:filtered.index.get_loc(
-                        self.end_date), ]
-                else:
-                    logging.info(
-                        f"{sym} does not have {self.end_date} in date index, not included")
-                    dne.append(sym)
-                    continue
-
+            if self.start_ms is not None:
+                filtered = filtered.iloc[filtered.index.get_loc(
+                    self.start_ms, 'bfill'):, ]
+            if self.end_ms is not None:
+                filtered = filtered.iloc[:filtered.index.get_loc(
+                    self.end_ms, 'ffill'), ]
+            
             self.symbol_data[sym] = filtered
 
             # combine index to pad forward values
@@ -172,7 +153,7 @@ class HistoricCSVDataHandler(DataHandler):
     def __copy__(self):
         return HistoricCSVDataHandler(
             self.events, self.symbol_list, self.creds,
-            self.start_date_str, self.end_date_str, self.frequency_type
+            self.start_ms, self.end_ms, self.frequency_type
         )
 
     def _get_new_bar(self, symbol):
