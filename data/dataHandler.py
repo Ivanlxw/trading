@@ -38,6 +38,19 @@ class DataHandler(ABC):
         self.frequency_type = frequency_type
         self.csv_dir = Path(
             os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
+        # https://polygon.io/docs/stocks/get_v2_aggs_ticker__stocksticker__range__multiplier___timespan___from___to
+        # self.data_fields = ['datetime', 'o', 'h', 'l', 'c', 'v', 'n', 'vw']
+        self.data_fields = ['symbol', 'datetime',
+                            'open', 'high', 'low', 'close', 'volume', 'num_trades', 'vol_weighted_price']
+        self.col_rename_mapper = {
+            'o': 'open',
+            'h': 'high',
+            'l': "low",
+            'c': 'close',
+            'v': 'volume',
+            'n': 'num_trades',
+            'vw': 'vol_weighted_price'
+        }
         assert self.csv_dir.is_dir()
 
         self.creds = creds
@@ -105,8 +118,6 @@ class HistoricCSVDataHandler(DataHandler):
         self.symbol_data = {}
         self.latest_symbol_data = dict((s, []) for s in self.symbol_list)
         self.continue_backtest = True
-        self.data_fields = ['symbol', 'datetime',
-                            'open', 'high', 'low', 'close', 'volume']
         if not live:
             self._open_convert_csv_files()
 
@@ -116,13 +127,15 @@ class HistoricCSVDataHandler(DataHandler):
             dfs = [(sym, pd.read_csv(
                 os.path.join(self.csv_dir, f"{sym}.csv"),
                 index_col=0,
-            ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]) for sym in self.symbol_list]
+            ).drop_duplicates().sort_index()
+            .rename(columns=self.col_rename_mapper).loc[:, self.data_fields[2:]]) for sym in self.symbol_list]
         else:
             with ProcessPool(4) as p:
                 dfs = p.map(lambda s: (s, pd.read_csv(
                     os.path.join(self.csv_dir, f"{s}.csv"),
                     index_col=0,
-                ).drop_duplicates().sort_index().loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
+                ).drop_duplicates().sort_index()
+                .rename(columns=self.col_rename_mapper).loc[:, self.data_fields[2:]]), self.symbol_list)
         dne = []
         for sym, temp_df in dfs:
             filtered = temp_df
@@ -132,7 +145,7 @@ class HistoricCSVDataHandler(DataHandler):
             if self.end_ms is not None:
                 filtered = filtered.iloc[:filtered.index.get_loc(
                     self.end_ms, 'ffill'), ]
-            
+
             self.symbol_data[sym] = filtered
 
             # combine index to pad forward values
@@ -170,7 +183,9 @@ class HistoricCSVDataHandler(DataHandler):
                 'high': b[1][1],
                 'low': b[1][2],
                 'close': b[1][3],
-                'volume': b[1][4]
+                'volume': b[1][4],
+                'num_trades': b[1][5],
+                'vol_weighted_price': b[1][6],
             }
 
     def get_latest_bars(self, symbol, N=1):
@@ -197,20 +212,15 @@ class HistoricCSVDataHandler(DataHandler):
 
 
 class DataFromDisk(HistoricCSVDataHandler):
-    """ Takes in data from FMP API but uses TDA API for quotes """
+    """ Takes in data from Polygon API but uses TDA API for quotes """
 
-    def __init__(self, events, symbol_list, creds: dict, start_date: str,
+    def __init__(self, events, symbol_list, creds: dict, start_ms: int,
                  frequency_type="daily", live=False) -> None:
-        if type(start_date) != str and re.match(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", start_date):
-            raise Exception(
-                "Start date has to be string and following format: YYYY-MM-DD")
         assert frequency_type in ["1min", "5min",
                                   "10min", "15min", "30min", "daily"]
         self.frequency_type = frequency_type
         super().__init__(events, symbol_list, creds,
-                         start_date, end_date=None, frequency_type=self.frequency_type, live=live)
-        self.data_fields = ['datetime', 'open',
-                            'high', 'low', 'close', 'volume']
+                         start_ms, end_ms=None, frequency_type=self.frequency_type, live=live)
         self.continue_backtest = True
         self.csv_dir = Path(
             os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
@@ -218,7 +228,7 @@ class DataFromDisk(HistoricCSVDataHandler):
 
     def __copy__(self):
         return DataFromDisk(
-            self.events, self.symbol_list, self.start_date_str, self.frequency_type, self.live
+            self.events, self.symbol_list, self.start_ms, self.frequency_type, self.live
         )
 
     def _get_quote(self, ticker):
@@ -242,13 +252,15 @@ class DataFromDisk(HistoricCSVDataHandler):
             dfs = [(sym, pd.read_csv(
                 os.path.join(self.csv_dir / f"{sym}.csv"),
                 index_col=0,
-            ).drop_duplicates().sort_index().iloc[-500:].loc[:, ["open", "high", "low", "close", "volume"]]) for sym in self.symbol_list]
+            ).drop_duplicates().sort_index()
+            .rename(columns=self.col_rename_mapper).iloc[-500:].loc[:, self.data_fields[2:]]) for sym in self.symbol_list]
         else:
             with ProcessPool(4) as p:
                 dfs = p.map(lambda s: (s, pd.read_csv(
                     os.path.join(self.csv_dir / f"{s}.csv"),
                     index_col=0,
-                ).drop_duplicates().sort_index().iloc[-500:].loc[:, ["open", "high", "low", "close", "volume"]]), self.symbol_list)
+                ).drop_duplicates().sort_index()
+                .rename(columns=self.col_rename_mapper).iloc[-500:].loc[:, self.data_fields[2:]]), self.symbol_list)
         for sym, price_history in dfs:
             if price_history.empty:
                 logging.info(f"Empty dataframe for {sym}")
@@ -268,8 +280,8 @@ class DataFromDisk(HistoricCSVDataHandler):
             self.symbol_data[sym].index = self.symbol_data[sym].index.map(
                 convert_ms_to_timestamp)
             self.symbol_data[sym]["datetime"] = self.symbol_data[sym].index.values
-            self.latest_symbol_data[sym] = self.symbol_data[sym].loc[:, [
-                "datetime", "open", "high", "low", "close", "volume"]].to_dict('records')
+            self.latest_symbol_data[sym] = self.symbol_data[sym].loc[:,
+                                                                     self.data_fields[1:]].to_dict('records')
 
     def update_bars(self):
         if not self.live:

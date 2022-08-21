@@ -56,9 +56,8 @@ class Broker(ABC):
         """ More for live trading, since we send q request with no response from web api, we need to check via API for pending & filled orders"""
         pass 
 
-    def update_portfolio_positions(self, port: Portfolio):
+    def update_portfolio_positions(self):
         """ Update for alpaca and TDA, use API call to update Portfolio class positions"""
-        pass
 
     def get_account_details(self):
         """ For live brokers """
@@ -272,6 +271,7 @@ class IBBroker(Broker, EWrapper, EClient):
     def execute_order(self, event) -> bool:
         if event is None:
             return False
+        self.update_portfolio_positions()  # get latest curr_holdings from broker
         if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
             if event is not None:
                 asset = event.symbol
@@ -301,9 +301,9 @@ class IBBroker(Broker, EWrapper, EClient):
     def calculate_commission(self, quantity, fill_cost):
         full_cost = 1.3
         if quantity <= 500:
-            full_cost = max(1.3, 0.013 * quantity)
+            full_cost = max(full_cost, 0.013 * quantity)
         else:
-            full_cost = max(1.3, 0.008 * quantity)
+            full_cost = max(full_cost, 0.008 * quantity)
         full_cost = min(full_cost, 0.005 * quantity * fill_cost)
 
         return full_cost
@@ -431,6 +431,7 @@ class TDABroker(Broker):
     def execute_order(self, event: OrderEvent) -> bool:
         if event is None:
             return False
+        self.update_portfolio_positions()  # get latest curr_holdings from broker
         if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
             if event is not None:
                 data = {
@@ -510,7 +511,7 @@ class TDABroker(Broker):
             headers={"Authorization": f"Bearer {self.access_token}"}
         ).json()
 
-    def update_portfolio_positions(self, port: Portfolio):
+    def update_portfolio_positions(self):
         acct_details = self.get_account_details_with_positions()
         assert "securitiesAccount" in acct_details.keys() and "positions" in acct_details["securitiesAccount"].keys(
         ), "positions does not exit in queries acct details"
@@ -527,8 +528,8 @@ class TDABroker(Broker):
             total += inst_qty * avg_trade_px
         cur_holdings["cash"] = acct_details["securitiesAccount"]["currentBalances"]["cashBalance"]
         cur_holdings['total'] = total + cur_holdings["cash"]
-        port.current_holdings.update(cur_holdings)
-        port.write_curr_holdings()
+        self.port.current_holdings.update(cur_holdings)
+        self.port.write_curr_holdings()
 
 
 class AlpacaBroker(Broker):
@@ -565,6 +566,7 @@ class AlpacaBroker(Broker):
         if event is None:
             return False
         side = "buy" if event.direction == OrderPosition.BUY else "sell"
+        self.update_portfolio_positions()  # get latest curr_holdings from broker()
         if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
             if event is not None:
                 try:
@@ -623,7 +625,7 @@ class AlpacaBroker(Broker):
     def get_quote(self, ticker):
         return self.api.get_last_quote(ticker)
 
-    def update_portfolio_positions(self, port: Portfolio):
+    def update_portfolio_positions(self):
         cur_holdings = dict()
         total = 0
         for pos_details in self.get_positions():
@@ -636,4 +638,4 @@ class AlpacaBroker(Broker):
             total += inst_qty * avg_trade_px
         cur_holdings["cash"] = float(self.get_account_details().cash)
         cur_holdings['total'] = total + cur_holdings["cash"]
-        port.current_holdings.update(cur_holdings)
+        self.port.current_holdings.update(cur_holdings)
