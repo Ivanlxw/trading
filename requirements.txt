@@ -9,3 +9,4 @@ alpaca-trade-api
 TA-Lib
 selenium
 pathos
+scipy
