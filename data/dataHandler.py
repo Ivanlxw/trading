@@ -3,18 +3,17 @@ import re
 import sys
 import requests
 import logging
-import alpaca_trade_api
 import pandas as pd
 from abc import ABC, abstractmethod
 from pathlib import Path
 from pathos.pools import ProcessPool  # not working on Windows
 
 from backtest.utilities.utils import log_message
-from trading.utilities.utils import convert_ms_to_timestamp, daily_date_range
+from trading.utilities.utils import convert_ms_to_timestamp
 from trading.event import MarketEvent
 
 NY = 'America/New_York'
-frequency_types = ["1min", "5min", "15min", "30min", "1hour", "4hour", "daily"]
+FREQUENCY_TYPES = ["1minute", "5minute", "15minute", "30minute", "1hour", "4hour", "day"]
 
 
 class DataHandler(ABC):
@@ -42,7 +41,7 @@ class DataHandler(ABC):
         # self.data_fields = ['datetime', 'o', 'h', 'l', 'c', 'v', 'n', 'vw']
         self.data_fields = ['symbol', 'datetime',
                             'open', 'high', 'low', 'close', 'volume', 'num_trades', 'vol_weighted_price']
-        self.col_rename_mapper = {
+        self.col_rename_mapper = { # POLYGON DATA
             'o': 'open',
             'h': 'high',
             'l': "low",
@@ -83,6 +82,10 @@ class DataHandler(ABC):
             f"[get_historical_fundamentals] Excluded symbols: {exclude_sym}")
 
     @abstractmethod
+    def _convert_raw_files(self):
+        return
+
+    @abstractmethod
     def get_latest_bars(self, symbol, N=1):
         """
         Returns last N bars from latest_symbol list, or fewer if less
@@ -112,39 +115,39 @@ class HistoricCSVDataHandler(DataHandler):
         - absolute path of the CSV files
         - a list of symbols determining universal stocks
         """
-        assert frequency_type in frequency_types
+        assert frequency_type in FREQUENCY_TYPES
         super().__init__(events, symbol_list, creds, frequency_type, start_ms, end_ms, live)
         self.frequency_type = frequency_type
         self.symbol_data = {}
         self.latest_symbol_data = dict((s, []) for s in self.symbol_list)
         self.continue_backtest = True
         if not live:
-            self._open_convert_csv_files()
+            self._convert_raw_files()
 
-    def _open_convert_csv_files(self):
+    def _convert_raw_files(self):
         comb_index = None
         if sys.platform.startswith('win'):
             dfs = [(sym, pd.read_csv(
                 os.path.join(self.csv_dir, f"{sym}.csv"),
                 index_col=0,
             ).drop_duplicates().sort_index()
-            .rename(columns=self.col_rename_mapper).loc[:, self.data_fields[2:]]) for sym in self.symbol_list]
+                .rename(columns=self.col_rename_mapper).loc[:, self.data_fields[2:]]) for sym in self.symbol_list]
         else:
             with ProcessPool(4) as p:
                 dfs = p.map(lambda s: (s, pd.read_csv(
                     os.path.join(self.csv_dir, f"{s}.csv"),
                     index_col=0,
                 ).drop_duplicates().sort_index()
-                .rename(columns=self.col_rename_mapper).loc[:, self.data_fields[2:]]), self.symbol_list)
+                    .rename(columns=self.col_rename_mapper).loc[:, self.data_fields[2:]]), self.symbol_list)
         dne = []
         for sym, temp_df in dfs:
             filtered = temp_df
             if self.start_ms is not None:
-                filtered = filtered.iloc[filtered.index.get_loc(
-                    self.start_ms, 'bfill'):, ]
+                filtered = filtered.iloc[filtered.index.get_indexer(
+                    [self.start_ms], 'bfill')[0]:, ]
             if self.end_ms is not None:
-                filtered = filtered.iloc[:filtered.index.get_loc(
-                    self.end_ms, 'ffill'), ]
+                filtered = filtered.iloc[:filtered.index.get_indexer(
+                    [self.end_ms], 'ffill')[0], ]
 
             self.symbol_data[sym] = filtered
 
@@ -154,7 +157,7 @@ class HistoricCSVDataHandler(DataHandler):
             else:
                 comb_index.union(self.symbol_data[sym].index.drop_duplicates())
 
-        log_message(f"[_open_convert_csv_files] Excluded symbols: {dne}")
+        log_message(f"[_convert_raw_files] Excluded symbols: {dne}")
         # reindex
         for s in self.symbol_data:
             self.symbol_data[s] = self.symbol_data[s].reindex(
@@ -215,9 +218,8 @@ class DataFromDisk(HistoricCSVDataHandler):
     """ Takes in data from Polygon API but uses TDA API for quotes """
 
     def __init__(self, events, symbol_list, creds: dict, start_ms: int,
-                 frequency_type="daily", live=False) -> None:
-        assert frequency_type in ["1min", "5min",
-                                  "10min", "15min", "30min", "daily"]
+                 frequency_type="day", live=False) -> None:
+        assert frequency_type in FREQUENCY_TYPES 
         self.frequency_type = frequency_type
         super().__init__(events, symbol_list, creds,
                          start_ms, end_ms=None, frequency_type=self.frequency_type, live=live)
@@ -253,14 +255,14 @@ class DataFromDisk(HistoricCSVDataHandler):
                 os.path.join(self.csv_dir / f"{sym}.csv"),
                 index_col=0,
             ).drop_duplicates().sort_index()
-            .rename(columns=self.col_rename_mapper).iloc[-500:].loc[:, self.data_fields[2:]]) for sym in self.symbol_list]
+                .rename(columns=self.col_rename_mapper).iloc[-500:].loc[:, self.data_fields[2:]]) for sym in self.symbol_list]
         else:
             with ProcessPool(4) as p:
                 dfs = p.map(lambda s: (s, pd.read_csv(
                     os.path.join(self.csv_dir / f"{s}.csv"),
                     index_col=0,
                 ).drop_duplicates().sort_index()
-                .rename(columns=self.col_rename_mapper).iloc[-500:].loc[:, self.data_fields[2:]]), self.symbol_list)
+                    .rename(columns=self.col_rename_mapper).iloc[-500:].loc[:, self.data_fields[2:]]), self.symbol_list)
         for sym, price_history in dfs:
             if price_history.empty:
                 logging.info(f"Empty dataframe for {sym}")
