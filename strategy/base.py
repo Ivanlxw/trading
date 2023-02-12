@@ -67,31 +67,38 @@ class Strategy(object, metaclass=ABCMeta):
         }
 
 
-class BuyAndHoldStrategy(Strategy):
-    """
-    LONG all the symbols as soon as a bar is received. Next exit its position
+class Margin(metaclass=ABCMeta):
+    @abstractmethod
+    def apply(self):
+        ''' Should return tuple of float: (fair_bid, fair_ask) '''
+        pass
 
-    A benchmark to compare other strategies
-    """
 
-    def __init__(self, bars, events):
+class FairPriceStrategy(Strategy, metaclass=ABCMeta):
+    @abstractmethod
+    def __init__(self, bars: DataHandler, events: queue.Queue, margin, description: str = ""):
         """
         Args:
-        bars - DataHandler object that provides bar info
-        events - event queue object
+            bars - DataHandler object that provides bar info
+            events - event queue object
         """
-        super().__init__(bars, events)
-        self._initialize_bought_status()
+        self.bars: DataHandler = bars
+        self.events = events
+        self.description = description
+        self.period = None
+        self.margin: Margin = margin
 
-    def _initialize_bought_status(self,):
-        self.bought = {}
-        for s in self.bars.symbol_list:
-            self.bought[s] = False
+    def _calculate_signal(self, ticker) -> List[SignalEvent]:
+        ohlcv = self.get_bars(ticker) 
+        fair = self.get_fair()
+        fair_bid, fair_ask = self.margin.apply(fair)
+        assert fair_ask > fair_bid, f"fair_bid={fair_bid}, fair_ask={fair_ask}"
+        close_px = ohlcv['close'][-1]
+        if fair_bid > close_px:
+            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.BUY, fair_bid)]
+        elif fair_ask < close_px:
+            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.SELL, fair_ask)]
 
-    def _calculate_signal(self, symbol) -> List[SignalEvent]:
-        if not self.bought[symbol]:
-            bars = self.bars.get_latest_bars(symbol, N=1)
-            # there's an entry
-            if bars is not None and len(bars['datetime']) > 0:
-                self.bought[symbol] = True
-                return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
+    @abstractmethod
+    def get_fair() -> float:
+        pass

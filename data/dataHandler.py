@@ -13,7 +13,7 @@ from trading.utilities.utils import convert_ms_to_timestamp
 from trading.event import MarketEvent
 
 NY = 'America/New_York'
-FREQUENCY_TYPES = ["1minute", "5minute", "15minute", "30minute", "1hour", "4hour", "day"]
+FREQUENCY_TYPES = ["1minute", "5minute", "15minute", "30minute", "60minute", "day"]
 
 
 class DataHandler(ABC):

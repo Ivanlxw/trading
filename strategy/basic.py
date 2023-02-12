@@ -52,3 +52,33 @@ class BoundedPercChange(Strategy):
         elif perc_chg < 0 and perc_chg > -self.limit:
             order_position = OrderPosition.BUY if self.contrarian else OrderPosition.SELL
             return [SignalEvent(ticker, bars_list["datetime"][-1], order_position, bars_list["close"][-1])]
+
+
+class BuyAndHoldStrategy(Strategy):
+    """
+    LONG all the symbols as soon as a bar is received. Next exit its position
+
+    A benchmark to compare other strategies
+    """
+
+    def __init__(self, bars, events):
+        """
+        Args:
+        bars - DataHandler object that provides bar info
+        events - event queue object
+        """
+        super().__init__(bars, events)
+        self._initialize_bought_status()
+
+    def _initialize_bought_status(self,):
+        self.bought = {}
+        for s in self.bars.symbol_list:
+            self.bought[s] = False
+
+    def _calculate_signal(self, symbol) -> List[SignalEvent]:
+        if not self.bought[symbol]:
+            bars = self.bars.get_latest_bars(symbol, N=1)
+            # there's an entry
+            if bars is not None and len(bars['datetime']) > 0:
+                self.bought[symbol] = True
+                return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
