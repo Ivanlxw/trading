@@ -1,8 +1,12 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import math
 import random
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from trading.utilities.enum import OrderPosition
 
@@ -49,6 +53,37 @@ class PlotIndividual(Plot):
         return (X, math.ceil(self.L/X))
 
     def plot(self):
+        if len(self.signals) == 0:
+            return
+        data = self.bars.latest_symbol_data
+        n_rows, n_cols = self.dims
+        tickers = random.sample(self.bars.symbol_data.keys(), self.L)
+        fig = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=[ticker for ticker in tickers])
+
+        for idx, ticker in enumerate(tickers):
+            buy_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
+                self.signals[:, -1] == OrderPosition.BUY))]
+            sell_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
+                self.signals[:, -1] == OrderPosition.SELL))]
+            obs = pd.DataFrame(data[ticker])
+            row = idx // n_rows + 1
+            col = idx % n_rows + 1
+            fig.append_trace(go.Candlestick(
+                x=obs['datetime'],
+                open=obs['open'],
+                high=obs['high'],
+                low=obs['low'],
+                close=obs['close'],
+            ), row=row, col=col)
+            fig.append_trace(go.Scatter(x=buy_signals[:, 1], y=buy_signals[:, 2], mode="markers",
+                                        marker=dict(line=dict(width=2, color="green"), symbol='x')), row=row, col=col)
+            fig.append_trace(go.Scatter(x=sell_signals[:, 1], y=sell_signals[:, 2], mode="markers",
+                             marker=dict(color="black", line_width=2, symbol='x')), row=row, col=col)
+        fig.update_xaxes(rangeslider_visible=False)
+        fig.update_layout(showlegend=False)
+        fig.show()
+
+    def plot_old(self):
         if len(self.signals) == 0:
             return
         data = self.bars.latest_symbol_data
