@@ -35,7 +35,7 @@ class FairPriceStrategy(Strategy):
         if ohlcv is None:
             return
         fair_bid, fair_ask = self.get_fair(ticker)
-        if np.isnan(fair_bid) or np.isnan(fair_ask):
+        if np.isnan(fair_bid) or np.isnan(fair_ask) or fair_bid == fair_ask == 0:
             return 
         assert fair_ask > fair_bid, f"fair_bid={fair_bid}, fair_ask={fair_ask}"
         if fair_bid > ohlcv['high'][-1]:
