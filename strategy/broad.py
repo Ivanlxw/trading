@@ -42,7 +42,6 @@ class BroadFunctor(Strategy, BroadMarketStrategy):
         self.n = n
         self.description = description
         self.order_position = order_position
-
         self._load_data(broad_sym, freq)
 
     def _calculate_signal(self, symbol) -> List[SignalEvent]:

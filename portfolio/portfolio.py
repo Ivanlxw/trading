@@ -16,7 +16,7 @@ from trading.portfolio.rebalance import NoRebalance
 from trading.utilities.utils import convert_ms_to_timestamp
 from backtest.utilities.utils import log_message
 
-ABSOLUTE_BT_DATA_DIR = Path(os.environ["WORKSPACE_ROOT"]) / "Data"
+ABSOLUTE_BT_DATA_DIR = Path(os.environ["DATA_DIR"])
 class Portfolio(object, metaclass=ABCMeta):
 
     @abstractmethod

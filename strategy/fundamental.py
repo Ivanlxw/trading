@@ -12,8 +12,7 @@ from trading.event import SignalEvent
 from trading.strategy.base import Strategy
 
 
-FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / \
-    "Data/data/fundamental/quarterly"
+FUNDAMENTAL_DIR = Path(os.environ["DATA_DIR"]) / "fundamental/quarterly"
 
 
 class FundamentalStrategy(Strategy, metaclass=ABCMeta):

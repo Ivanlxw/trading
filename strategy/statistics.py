@@ -127,9 +127,11 @@ class Trending(Strategy):
         self.func = func
 
     def _calc_trending_score(self, bars_list) -> float:
-        total = self.period * (self.period - 1) / 2
         score = 0
         values = self.func(bars_list)   # list or np.array
+        # remove all nan values
+        values = [v for v in values if not np.isnan(v)] 
+        total = len(values) * (len(values) - 1) / 2
         for idx, val in enumerate(values):
             if idx == 0:
                 continue

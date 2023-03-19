@@ -13,7 +13,7 @@ from trading.utilities.utils import convert_ms_to_timestamp
 from trading.event import MarketEvent
 
 NY = 'America/New_York'
-FREQUENCY_TYPES = ["1minute", "5minute", "15minute", "30minute", "1hour", "4hour", "day"]
+FREQUENCY_TYPES = ["1minute", "5minute", "15minute", "30minute", "60minute", "day"]
 
 
 class DataHandler(ABC):
@@ -35,8 +35,7 @@ class DataHandler(ABC):
         self.start_ms = start_ms
         self.end_ms = end_ms
         self.frequency_type = frequency_type
-        self.csv_dir = Path(
-            os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
+        self.csv_dir = Path(os.environ['DATA_DIR']) / self.frequency_type
         # https://polygon.io/docs/stocks/get_v2_aggs_ticker__stocksticker__range__multiplier___timespan___from___to
         # self.data_fields = ['datetime', 'o', 'h', 'l', 'c', 'v', 'n', 'vw']
         self.data_fields = ['symbol', 'datetime',
@@ -224,8 +223,7 @@ class DataFromDisk(HistoricCSVDataHandler):
         super().__init__(events, symbol_list, creds,
                          start_ms, end_ms=None, frequency_type=self.frequency_type, live=live)
         self.continue_backtest = True
-        self.csv_dir = Path(
-            os.environ['WORKSPACE_ROOT']) / f"Data/data/{self.frequency_type}"
+        self.csv_dir = Path(os.environ['DATA_DIR']) / self.frequency_type
         self._set_symbol_data()
 
     def __copy__(self):

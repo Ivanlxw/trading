@@ -12,8 +12,7 @@ from trading.utilities.utils import daily_date_range
 from trading.data.dataHandler import DataHandler
 from trading.strategy.statmodels.targets import _ema
 
-FUNDAMENTAL_DIR = Path(os.environ["WORKSPACE_ROOT"]) / \
-    "Data/data/fundamental/quarterly"
+FUNDAMENTAL_DIR = Path(os.environ["DATA_DIR"]) / "fundamental/quarterly"
 
 
 class Features(ABC):
