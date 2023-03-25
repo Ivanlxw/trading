@@ -28,6 +28,27 @@ class FairPriceStrategy(Strategy):
         self.period = period
         self.fair_price_feature = fair_price_feature
         self.margin_feature = margin_feature
+    
+
+    def calculate_signals(self, event, historical_fair_prices) -> List[SignalEvent]:
+        '''
+            historical_fair_prices: mapping of symbols to a list of ts/fair_bid/fair_ask 
+            Note: Will be slow, should only be used in inform to see plots of fair prices
+        '''
+
+        signals = []
+        if event.type == "MARKET":
+            for s in self.bars.symbol_list:
+                fair_bid, fair_ask = self.get_fair(s)
+                latest_mkt_data = self.bars.get_latest_bars(s)
+                historical_fair_prices[s].append(dict(
+                    fair_bid=fair_bid,
+                    fair_ask=fair_ask,
+                    datetime=latest_mkt_data['datetime'][-1],
+                ))
+                sig = self._calculate_signal(s)
+                signals += sig if sig is not None else []
+        return signals
 
 
     def _calculate_signal(self, ticker) -> List[SignalEvent]:
@@ -37,7 +58,7 @@ class FairPriceStrategy(Strategy):
         fair_bid, fair_ask = self.get_fair(ticker)
         if np.isnan(fair_bid) or np.isnan(fair_ask) or fair_bid == fair_ask == 0:
             return 
-        assert fair_ask > fair_bid, f"fair_bid={fair_bid}, fair_ask={fair_ask}"
+        assert fair_ask >= fair_bid, f"fair_bid={fair_bid}, fair_ask={fair_ask}"
         if fair_bid > ohlcv['high'][-1]:
             return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.BUY, fair_bid)]
         elif fair_ask < ohlcv['low'][-1]:

@@ -1,5 +1,6 @@
 import math
 import random
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,8 @@ import seaborn as sns
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from trading.event import SignalEvent
+from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 
 
@@ -36,19 +39,23 @@ class PlotIndividual(Plot):
         TODO : Apply to backtest
     """
 
-    def __init__(self, bars, signals) -> None:
+    def __init__(self, strategy: Strategy, signals: List[SignalEvent], plot_fair_prices: bool, historical_fair_prices: dict) -> None:
         sns.set()
         sns.set_style('darkgrid')
         plt.figure(num=None, figsize=(12, 7), facecolor='w', edgecolor='k')
-        self.bars = bars
+        self.bars = strategy.bars
         self.signals = np.array(
             [[sig.symbol, sig.datetime, sig.price, sig.order_position] for sig in signals])
-        self.L = min(16, len(self.bars.symbol_data.keys()))
+        self.L = min(9, len(self.bars.symbol_data.keys()))
         self.dims = self._get_squared_dims()
+        self.plot_fair_prices = plot_fair_prices
+        if self.plot_fair_prices:
+            self.historical_fair_prices = historical_fair_prices
+            assert historical_fair_prices, "historical_fair_prices is empty dict or None"
 
     def _get_squared_dims(self) -> tuple:
-        if self.L == 16:
-            return (4, 4)
+        # if self.L == 16:
+        #     return (3, 3)
         X = int(np.sqrt(self.L))
         return (X, math.ceil(self.L/X))
 
@@ -79,26 +86,10 @@ class PlotIndividual(Plot):
                                         marker=dict(line=dict(width=2, color="green"), symbol='x')), row=row, col=col)
             fig.append_trace(go.Scatter(x=sell_signals[:, 1], y=sell_signals[:, 2], mode="markers",
                              marker=dict(color="black", line_width=2, symbol='x')), row=row, col=col)
+            if self.plot_fair_prices:
+                df = pd.DataFrame(self.historical_fair_prices[ticker])
+                fig.append_trace(go.Scatter(x=df["datetime"], y=df["fair_bid"], line=dict(color="yellow", width=1.5)), row=row, col=col)
+                fig.append_trace(go.Scatter(x=df["datetime"], y=df["fair_ask"], line=dict(color="orange", width=1.5)), row=row, col=col)
         fig.update_xaxes(rangeslider_visible=False)
         fig.update_layout(showlegend=False)
         fig.show()
-
-    def plot_old(self):
-        if len(self.signals) == 0:
-            return
-        data = self.bars.latest_symbol_data
-        for idx, ticker in enumerate(random.sample(self.bars.symbol_data.keys(), self.L)):
-            buy_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
-                self.signals[:, -1] == OrderPosition.BUY))]
-            sell_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
-                self.signals[:, -1] == OrderPosition.SELL))]
-            ticker_data = np.array(
-                [[obs['datetime'], obs['close']] for obs in data[ticker]])
-            plt.subplot(self.dims[0], self.dims[1], idx+1)
-            plt.plot(ticker_data[:, 0], ticker_data[:, 1])
-            plt.scatter(buy_signals[:, 1],
-                        buy_signals[:, 2], c='g', marker="x")
-            plt.scatter(sell_signals[:, 1],
-                        sell_signals[:, 2], c='r', marker="x")
-            plt.title(f"Close Prices for {ticker}")
-        plt.show()
