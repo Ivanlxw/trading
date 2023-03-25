@@ -1,6 +1,6 @@
 import os
-import re
 import sys
+import numpy as np
 import requests
 import logging
 import pandas as pd
@@ -196,6 +196,9 @@ class HistoricCSVDataHandler(DataHandler):
             for indi_bar_dict in self.latest_symbol_data[symbol][-N:]:
                 for k in indi_bar_dict.keys():
                     bar[k] += [indi_bar_dict[k]]
+            # convert to np.array
+            for k in bar.keys():
+                bar[k] = np.array(bar[k])
             bar['symbol'] = symbol
             return bar
         logging.error(

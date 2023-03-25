@@ -83,7 +83,7 @@ class PlotIndividual(Plot):
                 close=obs['close'],
             ), row=row, col=col)
             fig.append_trace(go.Scatter(x=buy_signals[:, 1], y=buy_signals[:, 2], mode="markers",
-                                        marker=dict(line=dict(width=2, color="green"), symbol='x')), row=row, col=col)
+                                        marker=dict(line=dict(width=2, color="blue"), symbol='x')), row=row, col=col)
             fig.append_trace(go.Scatter(x=sell_signals[:, 1], y=sell_signals[:, 2], mode="markers",
                              marker=dict(color="black", line_width=2, symbol='x')), row=row, col=col)
             if self.plot_fair_prices:

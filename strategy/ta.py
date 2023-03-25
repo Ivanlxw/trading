@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Callable, List, Optional
 import talib
 import numpy as np
+from numba import njit
 from trading.event import SignalEvent
 from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
@@ -180,6 +181,7 @@ def sma(ohlc_data, period: int) -> list:
     return talib.SMA(np.array(ohlc_data["close"]), period)
 
 
+@njit
 def ema(ohlc_data, period: int) -> list:
     def _ema(curr_value, prev_value):
         if prev_value is None:

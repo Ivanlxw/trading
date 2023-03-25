@@ -30,7 +30,7 @@ class FairPriceStrategy(Strategy):
         self.margin_feature = margin_feature
     
 
-    def calculate_signals(self, event, historical_fair_prices) -> List[SignalEvent]:
+    def calculate_signals(self, event, historical_fair_prices=None) -> List[SignalEvent]:
         '''
             historical_fair_prices: mapping of symbols to a list of ts/fair_bid/fair_ask 
             Note: Will be slow, should only be used in inform to see plots of fair prices
@@ -41,11 +41,12 @@ class FairPriceStrategy(Strategy):
             for s in self.bars.symbol_list:
                 fair_bid, fair_ask = self.get_fair(s)
                 latest_mkt_data = self.bars.get_latest_bars(s)
-                historical_fair_prices[s].append(dict(
-                    fair_bid=fair_bid,
-                    fair_ask=fair_ask,
-                    datetime=latest_mkt_data['datetime'][-1],
-                ))
+                if historical_fair_prices is not None:
+                    historical_fair_prices[s].append(dict(
+                        fair_bid=fair_bid,
+                        fair_ask=fair_ask,
+                        datetime=latest_mkt_data['datetime'][-1],
+                    ))
                 sig = self._calculate_signal(s)
                 signals += sig if sig is not None else []
         return signals
@@ -60,9 +61,9 @@ class FairPriceStrategy(Strategy):
             return 
         assert fair_ask >= fair_bid, f"fair_bid={fair_bid}, fair_ask={fair_ask}"
         if fair_bid > ohlcv['high'][-1]:
-            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.BUY, fair_bid)]
+            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.BUY, ohlcv['high'][-1])]
         elif fair_ask < ohlcv['low'][-1]:
-            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.SELL, fair_ask)]
+            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.SELL, ohlcv['low'][-1])]
 
     def get_fair(self, ticker) -> Tuple[float]:
         ''' Main logic goes here '''
