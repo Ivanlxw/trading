@@ -14,13 +14,9 @@ from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 from trading.utilities.utils import convert_ms_to_timestamp
 
-ABSOLUTE_FP = Path(os.path.abspath(os.path.dirname(__file__)))
-
-
 class BroadMarketStrategy(ABC):
     def _load_data(self, sym, freq):
-        broad_sym_fp = ABSOLUTE_FP / \
-            f"../../Data/data/{freq}/{sym}.csv"
+        broad_sym_fp = Path(os.environ['DATA_DIR']) / f"{freq}/{sym}.csv"
         assert os.path.exists(broad_sym_fp), f"path does not exist: {broad_sym_fp}"
         self.broad_data = pd.read_csv(broad_sym_fp, index_col=0, header=0)
         self.broad_data.index = self.broad_data.index.map(
