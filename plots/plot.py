@@ -60,18 +60,12 @@ class PlotIndividual(Plot):
         return (X, math.ceil(self.L/X))
 
     def plot(self):
-        if len(self.signals) == 0:
-            return
         data = self.bars.latest_symbol_data
         n_rows, n_cols = self.dims
         tickers = random.sample(self.bars.symbol_data.keys(), self.L)
         fig = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=[ticker for ticker in tickers])
 
         for idx, ticker in enumerate(tickers):
-            buy_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
-                self.signals[:, -1] == OrderPosition.BUY))]
-            sell_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
-                self.signals[:, -1] == OrderPosition.SELL))]
             obs = pd.DataFrame(data[ticker])
             row = idx // n_rows + 1
             col = idx % n_rows + 1
@@ -82,10 +76,16 @@ class PlotIndividual(Plot):
                 low=obs['low'],
                 close=obs['close'],
             ), row=row, col=col)
-            fig.append_trace(go.Scatter(x=buy_signals[:, 1], y=buy_signals[:, 2], mode="markers",
-                                        marker=dict(line=dict(width=2, color="blue"), symbol='x')), row=row, col=col)
-            fig.append_trace(go.Scatter(x=sell_signals[:, 1], y=sell_signals[:, 2], mode="markers",
-                             marker=dict(color="black", line_width=2, symbol='x')), row=row, col=col)
+            if len(self.signals) > 0:
+                buy_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
+                    self.signals[:, -1] == OrderPosition.BUY))]
+                sell_signals = self.signals[np.where((self.signals[:, 0] == ticker) & (
+                    self.signals[:, -1] == OrderPosition.SELL))]
+                fig.append_trace(go.Scatter(x=buy_signals[:, 1], y=buy_signals[:, 2], mode="markers",
+                        marker=dict(line=dict(width=2, color="blue"), symbol='x')), row=row, col=col)
+                fig.append_trace(go.Scatter(x=sell_signals[:, 1], y=sell_signals[:, 2], mode="markers",
+                                marker=dict(color="black", line_width=2, symbol='x')), row=row, col=col)
+
             if self.plot_fair_prices:
                 df = pd.DataFrame(self.historical_fair_prices[ticker])
                 fig.append_trace(go.Scatter(x=df["datetime"], y=df["fair_bid"], line=dict(color="yellow", width=1.5)), row=row, col=col)
