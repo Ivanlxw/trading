@@ -36,7 +36,8 @@ class Broker(ABC):
         """
         raise NotImplementedError("Should implement _filter_execute_order()")
 
-    def execute_order(self, event) -> bool:
+    @abstractmethod
+    def execute_order(self, event: OrderEvent, event_queue, order_queue) -> bool:
         """
         Takes an OrderEvent and execute it, producing
         FillEvent that gets places into Events Queue
@@ -52,7 +53,7 @@ class Broker(ABC):
         """
         raise NotImplementedError("Implement calculate_commission()")
 
-    def check_filled_order(self):
+    def check_filled_order(self, event_queue):
         """ More for live trading, since we send q request with no response from web api, we need to check via API for pending & filled orders"""
         pass 
 
@@ -76,11 +77,9 @@ TODO:
 
 
 class SimulatedBroker(Broker):
-    def __init__(self, bars, port, events, order_queue, gatekeepers: List[GateKeeper] = None):
+    def __init__(self, bars, port, gatekeepers: List[GateKeeper] = None):
         super().__init__(port, gatekeepers)
         self.bars = bars
-        self.events = events
-        self.order_queue = order_queue
 
     def calculate_commission(self, quantity=None, fill_cost=None) -> float:
         return 0.0
@@ -110,13 +109,13 @@ class SimulatedBroker(Broker):
                 return False
         return True
 
-    def _put_fill_event(self, order_event: OrderEvent):
+    def _put_fill_event(self, order_event: OrderEvent, event_queue):
         order_event.trade_price = order_event.signal_price
         fill_event = FillEvent(order_event, self.calculate_commission())
-        self.events.put(fill_event)
+        event_queue.put(fill_event)
         return True
 
-    def execute_order(self, event: OrderEvent) -> bool:
+    def execute_order(self, event: OrderEvent, event_queue, order_queue) -> bool:
         if event is None:
             return False
         if event.type == "ORDER" and self.check_gk(event):
@@ -127,15 +126,15 @@ class SimulatedBroker(Broker):
                         if not event.processed:
                             event.processed = True
                             event.date += datetime.timedelta(days=1)
-                            self.order_queue.put(event)
+                            order_queue.put(event)
                             return False
                         if self._filter_execute_order(latest_snapshot, event):
-                            return self._put_fill_event(event)
+                            return self._put_fill_event(event, event_queue)
                         event.date += datetime.timedelta(days=1)
-                        self.order_queue.put(event)
+                        order_queue.put(event)
                 elif event.order_type == OrderType.MARKET:
                     event.trade_price = latest_snapshot["close"][-1]
-                    return self._put_fill_event(event)
+                    return self._put_fill_event(event, event_queue)
             return False
         return False
 
@@ -143,7 +142,6 @@ class SimulatedBroker(Broker):
 class IBBroker(Broker, EWrapper, EClient):
     def __init__(self, events):
         EClient.__init__(self, self)
-        self.events = events
         self.fill_dict = {}
         self.hist_data = []
 
@@ -252,7 +250,7 @@ class IBBroker(Broker, EWrapper, EClient):
             "filled": False,
         }
 
-    def create_fill(self, msg):
+    def create_fill(self, msg, event_queue):
         fd = self.fill_dict[msg.orderId]
         symbol = fd["symbol"]
         exchange = fd["exchange"]
@@ -263,10 +261,8 @@ class IBBroker(Broker, EWrapper, EClient):
         fill = FillEvent(
             datetime.datetime.utcnow(), symbol, exchange, filled, direction, fill_cost
         )
-
         self.fill_dict[msg.orderId]["filled"] = True
-
-        self.events.put(fill)
+        event_queue.put(fill)
 
     def execute_order(self, event) -> bool:
         if event is None:
@@ -310,9 +306,7 @@ class IBBroker(Broker, EWrapper, EClient):
 
 
 class TDABroker(Broker):
-    def __init__(self, events, gatekeepers: List[GateKeeper]) -> None:
-        super(TDABroker, self).__init__()
-        self.events = events
+    def __init__(self, gatekeepers: List[GateKeeper]) -> None:
         self.consumer_key = os.environ["TDD_consumer_key"]
         self.account_id = os.environ["TDA_account_id"]
         self.access_token = None
@@ -428,7 +422,7 @@ class TDABroker(Broker):
     def calculate_commission(self):
         return 0
 
-    def execute_order(self, event: OrderEvent) -> bool:
+    def execute_order(self, event: OrderEvent, event_queue) -> bool:
         if event is None:
             return False
         self.update_portfolio_positions()  # get latest curr_holdings from broker
@@ -464,11 +458,11 @@ class TDABroker(Broker):
                     log_message(res.text)
                     return False
                 self.pending_orders.append(event)
-                self.check_filled_order()
+                self.check_filled_order(event_queue)
                 return True
         return False
 
-    def check_filled_order(self):
+    def check_filled_order(self, event_queue):
         res = requests.get(
             f"https://api.tdameritrade.com/v1/accounts/{self.account_id}/orders",
             headers={
@@ -485,7 +479,7 @@ class TDABroker(Broker):
                 event = self.pending_orders[0]
                 event.trade_price = order['price']
                 fill_event = FillEvent(event, self.calculate_commission())
-                self.events.put(fill_event)
+                event_queue.put(fill_event)
                 self.pending_orders.pop(0)
 
     def cancel_order(self, order_id) -> bool:
@@ -533,9 +527,8 @@ class TDABroker(Broker):
 
 
 class AlpacaBroker(Broker):
-    def __init__(self, port, event_queue, creds: dict, gatekeepers: List[GateKeeper] = None):
+    def __init__(self, port, creds: dict, gatekeepers: List[GateKeeper] = None):
         super().__init__(port, gatekeepers)
-        self.events = event_queue
         self.base_url = "https://paper-api.alpaca.markets"
         self.data_url = "https://data.alpaca.markets/v2"
         self.api = alpaca_trade_api.REST(
@@ -562,7 +555,7 @@ class AlpacaBroker(Broker):
     def _filter_execute_order(self, event: OrderEvent) -> bool:
         return True
 
-    def execute_order(self, event: OrderEvent) -> bool:
+    def execute_order(self, event: OrderEvent, event_queue) -> bool:
         if event is None:
             return False
         side = "buy" if event.direction == OrderPosition.BUY else "sell"
@@ -597,7 +590,7 @@ class AlpacaBroker(Broker):
                 if order.status == "accepted":
                     log_message(f"Order filled: {order}")
                     fill_event = FillEvent(event, self.calculate_commission())
-                    self.events.put(fill_event)
+                    event_queue.put(fill_event)
                     return True
         return False
 

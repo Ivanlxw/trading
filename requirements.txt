@@ -10,3 +10,5 @@ TA-Lib
 selenium
 pathos
 scipy
+xgboost
+tables

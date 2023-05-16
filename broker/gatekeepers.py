@@ -158,10 +158,10 @@ class MaxPortfolioPercPerInst(GateKeeper):
         if len(symbol_close_px) < 1:
             return False
         symbol_close_px = symbol_close_px[0]
-        if_within_max_value_per_inst: bool = not (order_event.direction == OrderPosition.BUY and current_holdings[order_event.symbol]['quantity']
-                                                  + order_event.quantity > (current_holdings['total'] * self.position_percentage) // symbol_close_px)
-        if not if_within_max_value_per_inst:
+        is_within_max_value_per_inst: bool = abs(current_holdings[order_event.symbol]['quantity'] + order_event.quantity) \
+            <= (current_holdings['total'] * self.position_percentage) // symbol_close_px
+        if not is_within_max_value_per_inst:
             log_message(
                 f'[Gatekeepers] MaxPortValuePerInst ({order_event.symbol}): MaxValue={current_holdings["total"] * self.position_percentage}, SymValue={symbol_close_px * order_event.quantity}')
         # current_holdings[order_event.symbol]["quantity"]
-        return if_within_max_value_per_inst
+        return is_within_max_value_per_inst

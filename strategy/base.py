@@ -22,27 +22,21 @@ class Strategy(object, metaclass=ABCMeta):
     obtains the bar tuples from a queue object.
     """
     @abstractmethod
-    def __init__(self, bars: DataHandler, events: queue.Queue, description: str = ""):
+    def __init__(self, bars: DataHandler, description: str = ""):
         """
         Args:
         bars - DataHandler object that provides bar info
         events - event queue object
         """
         self.bars: DataHandler = bars
-        self.events = events
         self.description = description
         self.period = None
 
-    def put_to_queue_(self, sym, datetime, order_position, price):
-        warnings.warn("Should not be used anymore", DeprecationWarning)
-        self.events.put(SignalEvent(sym, datetime, order_position, price))
-
-    def calculate_signals(self, event) -> List[SignalEvent]:
+    def calculate_signals(self, event, historical_fair_prices=None) -> List[SignalEvent]:
+        '''_          Returns list(SignalEvents)
         '''
-          Returns list(SignalEvents)
-        '''
-        signals = []
         if event.type == "MARKET":
+            signals = []
             for s in self.bars.symbol_list:
                 sig = self._calculate_signal(s)
                 signals += sig if sig is not None else []

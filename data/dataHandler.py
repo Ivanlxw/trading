@@ -29,8 +29,7 @@ class DataHandler(ABC):
     - start_ms, end_ms: in millisecs
     """
 
-    def __init__(self, events, symbol_list, creds: dict, frequency_type, start_ms: int, end_ms: int, live: bool):
-        self.events = events
+    def __init__(self, symbol_list, creds: dict, frequency_type, start_ms: int, end_ms: int):
         self.symbol_list = symbol_list
         self.start_ms = start_ms
         self.end_ms = end_ms
@@ -52,9 +51,9 @@ class DataHandler(ABC):
         assert self.csv_dir.is_dir()
 
         self.creds = creds
-        self.fmp_api_key = self.creds["FMP_API"]
-        self.fundamental_data = None
-        self.live = live
+        self.fundamental_data = None    # depreciated but keep as might use fmp again
+
+        self.symbol_data = {}
 
     def _to_generator(self):
         for s in self.symbol_data:
@@ -93,7 +92,7 @@ class DataHandler(ABC):
         raise NotImplementedError("Should implement get_latest_bars()")
 
     @abstractmethod
-    def update_bars(self,):
+    def update_bars(self, event_queue):
         """
         Push latest bar to latest symbol structure for all symbols in list
         """
@@ -106,8 +105,8 @@ class HistoricCSVDataHandler(DataHandler):
     obtain "latest" bar similar to live trading (drip feed)
     """
 
-    def __init__(self, events, symbol_list, creds, start_ms: int = None,
-                 end_ms: int = None, frequency_type="daily", live: bool = False):
+    def __init__(self, symbol_list, creds, start_ms: int = None,
+                 end_ms: int = None, frequency_type="daily"):
         """
         Args:
         - Event Queue on which to push MarketEvent information to
@@ -115,13 +114,12 @@ class HistoricCSVDataHandler(DataHandler):
         - a list of symbols determining universal stocks
         """
         assert frequency_type in FREQUENCY_TYPES
-        super().__init__(events, symbol_list, creds, frequency_type, start_ms, end_ms, live)
+        super().__init__(symbol_list, creds, frequency_type, start_ms, end_ms)
         self.frequency_type = frequency_type
-        self.symbol_data = {}
+        
         self.latest_symbol_data = dict((s, []) for s in self.symbol_list)
         self.continue_backtest = True
-        if not live:
-            self._convert_raw_files()
+        self._convert_raw_files()
 
     def _convert_raw_files(self):
         comb_index = None
@@ -166,10 +164,8 @@ class HistoricCSVDataHandler(DataHandler):
         self._to_generator()
 
     def __copy__(self):
-        return HistoricCSVDataHandler(
-            self.events, self.symbol_list, self.creds,
-            self.start_ms, self.end_ms, self.frequency_type
-        )
+        return HistoricCSVDataHandler(self.symbol_list, self.creds,
+            self.start_ms, self.end_ms, self.frequency_type)
 
     def _get_new_bar(self, symbol):
         """
@@ -204,7 +200,7 @@ class HistoricCSVDataHandler(DataHandler):
         logging.error(
             f"Symbol ({symbol}) is not available in historical data set.")
 
-    def update_bars(self):
+    def update_bars(self, event_queue):
         for s in self.symbol_data:
             try:
                 bar = next(self._get_new_bar(s))
@@ -213,26 +209,23 @@ class HistoricCSVDataHandler(DataHandler):
             else:
                 if bar is not None:
                     self.latest_symbol_data[s].append(bar)
-        self.events.put(MarketEvent())
+        event_queue.put(MarketEvent())
 
 
 class DataFromDisk(HistoricCSVDataHandler):
     """ Takes in data from Polygon API but uses TDA API for quotes """
 
-    def __init__(self, events, symbol_list, creds: dict, start_ms: int,
-                 frequency_type="day", live=False) -> None:
+    def __init__(self, symbol_list, creds: dict, start_ms: int,
+                 frequency_type="day") -> None:
         assert frequency_type in FREQUENCY_TYPES 
         self.frequency_type = frequency_type
-        super().__init__(events, symbol_list, creds,
-                         start_ms, end_ms=None, frequency_type=self.frequency_type, live=live)
+        super().__init__(symbol_list, creds, start_ms, end_ms=None, frequency_type=self.frequency_type)
         self.continue_backtest = True
         self.csv_dir = Path(os.environ['DATA_DIR']) / self.frequency_type
         self._set_symbol_data()
 
     def __copy__(self):
-        return DataFromDisk(
-            self.events, self.symbol_list, self.start_ms, self.frequency_type, self.live
-        )
+        return DataFromDisk(self.symbol_list, self.creds, self.start_ms, self.frequency_type)
 
     def _get_quote(self, ticker):
         # depreciated: TDA's quote API call
@@ -286,11 +279,11 @@ class DataFromDisk(HistoricCSVDataHandler):
             self.latest_symbol_data[sym] = self.symbol_data[sym].loc[:,
                                                                      self.data_fields[1:]].to_dict('records')
 
-    def update_bars(self):
-        if not self.live:
-            super().update_bars()
-            self.events.put(MarketEvent())
+    def update_bars(self, event_queue, live: bool):
+        if not live:
+            super().update_bars(event_queue)
+            event_queue.put(MarketEvent())
             return
         log_message("reading prices from disk")
         self._set_symbol_data()
-        self.events.put(MarketEvent())
+        event_queue.put(MarketEvent())

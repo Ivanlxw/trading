@@ -12,8 +12,8 @@ class OneSidedOrderOnly(Strategy):
     Otherwise it may go haywire
     """
 
-    def __init__(self, bars, events, order_position: OrderPosition):
-        super().__init__(bars, events)
+    def __init__(self, bars, order_position: OrderPosition):
+        super().__init__(bars)
         self.order_position = order_position
 
     def _calculate_signal(self, ticker: str) -> List[SignalEvent]:
@@ -30,8 +30,8 @@ class BoundedPercChange(Strategy):
         strat_contrarian=True means that u trade in the opp direction
     """
 
-    def __init__(self, bars, events, limit: float, strat_contrarian: bool = False):
-        super().__init__(bars, events)
+    def __init__(self, bars, limit: float, strat_contrarian: bool = False):
+        super().__init__(bars)
         if limit > 1 or limit < 0:
             raise Exception("limit has to be 0 < limit < 1")
         self.limit = limit
@@ -61,13 +61,13 @@ class BuyAndHoldStrategy(Strategy):
     A benchmark to compare other strategies
     """
 
-    def __init__(self, bars, events):
+    def __init__(self, bars):
         """
         Args:
         bars - DataHandler object that provides bar info
         events - event queue object
         """
-        super().__init__(bars, events)
+        super().__init__(bars)
         self._initialize_bought_status()
 
     def _initialize_bought_status(self,):

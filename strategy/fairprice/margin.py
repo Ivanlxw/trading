@@ -25,12 +25,25 @@ class Margin:
 
 class PercentageMargin(Margin):
     def __init__(self, perc) -> None:
+        assert perc >= 0 and perc <= 1, f"perc has to be [0,1]: {perc}"
         super().__init__(lambda fair_price: self._perc_margins(perc)(fair_price))
 
     def _perc_margins(self, perc) -> callable:
-        assert perc >= 0 and perc <= 1, f"perc has to be [0,1]: {perc}"
         def _perc_margins(fair):
             return fair * (1 - perc), fair * (1 + perc) + 1e-5
+        return _perc_margins
+
+class AsymmetricPercentageMargin(Margin):
+    def __init__(self, perc: tuple) -> None:
+        # (bid, ask) perc
+        assert len(perc) == 2
+        for sided_perc in perc:
+            assert sided_perc >= 0 and sided_perc <= 1, f"perc has to be [0,1]: {sided_perc}"
+        super().__init__(lambda fair_price: self._perc_margins(perc)(fair_price))
+
+    def _perc_margins(self, perc) -> callable:
+        def _perc_margins(fair):
+            return fair * (1 - perc[0]), fair * (1 + perc[1]) + 1e-5
         return _perc_margins
 
 class AbsMargin(Margin):

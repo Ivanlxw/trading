@@ -13,7 +13,7 @@ from trading.utilities.enum import OrderPosition
 
 
 class FairPriceStrategy(Strategy):
-    def __init__(self, bars: DataHandler, events: queue.Queue, fair_price_feature: Feature, margin_feature: Margin, period, description: str = ""):
+    def __init__(self, bars: DataHandler, fair_price_feature: Feature, margin_feature: Margin, period, description: str = ""):
         """
         Args:
             fair_price_fn - a function that transforms a dictionary with key ohlcvn into base_fair_bid, base_fair_ask.
@@ -21,9 +21,8 @@ class FairPriceStrategy(Strategy):
             bars - DataHandler object that provides bar info
             events - event queue object
         """
-        super().__init__(bars, events, description)
+        super().__init__(bars, description)
         self.bars: DataHandler = bars
-        self.events = events
         self.description = description
         self.period = period
         self.fair_price_feature = fair_price_feature
@@ -53,17 +52,17 @@ class FairPriceStrategy(Strategy):
 
 
     def _calculate_signal(self, ticker) -> List[SignalEvent]:
-        ohlcv = self.get_bars(ticker) 
+        ohlcv = self.get_bars(ticker)
         if ohlcv is None:
             return
         fair_bid, fair_ask = self.get_fair(ticker)
-        if np.isnan(fair_bid) or np.isnan(fair_ask) or fair_bid == fair_ask == 0:
+        if np.isnan(fair_bid) or np.isnan(fair_ask) or fair_bid <= 0 or fair_ask <= 0:
             return 
         assert fair_ask >= fair_bid, f"fair_bid={fair_bid}, fair_ask={fair_ask}"
         if fair_bid > ohlcv['high'][-1]:
-            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.BUY, ohlcv['high'][-1])]
+            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.BUY, ohlcv['close'][-1])]
         elif fair_ask < ohlcv['low'][-1]:
-            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.SELL, ohlcv['low'][-1])]
+            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.SELL, ohlcv['close'][-1])]
 
     def get_fair(self, ticker) -> Tuple[float]:
         ''' Main logic goes here '''
