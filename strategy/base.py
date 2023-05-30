@@ -6,6 +6,8 @@ from abc import ABCMeta, abstractmethod
 
 from typing import List
 
+import numpy as np
+
 from trading.event import SignalEvent
 from trading.data.dataHandler import DataHandler
 
@@ -37,7 +39,7 @@ class Strategy(object, metaclass=ABCMeta):
             signals = []
             for s in self.bars.symbol_list:
                 bars = self.get_bars(s)
-                if bars is None or bars['open'] == bars['close'] == 0.0:
+                if bars is None or np.isnan(bars['open'][-1]) or np.isnan(bars['close'][-1]):
                     continue
                 sig = self._calculate_signal(bars)
                 signals += sig if sig is not None else []

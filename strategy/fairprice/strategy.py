@@ -38,38 +38,37 @@ class FairPriceStrategy(Strategy):
         signals = []
         if event.type == "MARKET":
             for s in self.bars.symbol_list:
-                fair_bid, fair_ask = self.get_fair(s)
-                latest_mkt_data = self.bars.get_latest_bars(s)
+                ohlcv = self.get_bars(s)
+                if ohlcv is None or np.isnan(ohlcv['open'][-1]) or np.isnan(ohlcv['close'][-1]):
+                    continue
+                fair_bid, fair_ask = self.get_fair(ohlcv)
                 if historical_fair_prices is not None:
                     historical_fair_prices[s].append(dict(
                         fair_bid=fair_bid,
                         fair_ask=fair_ask,
-                        datetime=latest_mkt_data['datetime'][-1],
+                        datetime=ohlcv['datetime'][-1],
                     ))
-                sig = self._calculate_signal(s)
+                sig = self._calculate_signal(ohlcv)
                 signals += sig if sig is not None else []
         return signals
 
 
-    def _calculate_signal(self, ticker) -> List[SignalEvent]:
-        ohlcv = self.get_bars(ticker)
-        if ohlcv is None:
-            return
-        fair_bid, fair_ask = self.get_fair(ticker)
+    def _calculate_signal(self, bars) -> List[SignalEvent]:
+        symbol = bars['symbol']
+        fair_bid, fair_ask = self.get_fair(bars)
         if np.isnan(fair_bid) or np.isnan(fair_ask) or fair_bid <= 0 or fair_ask <= 0:
             return 
         assert fair_ask >= fair_bid, f"fair_bid={fair_bid}, fair_ask={fair_ask}"
-        if fair_bid > ohlcv['high'][-1]:
-            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.BUY, ohlcv['close'][-1])]
-        elif fair_ask < ohlcv['low'][-1]:
-            return [SignalEvent(ticker, ohlcv['datetime'][-1], OrderPosition.SELL, ohlcv['close'][-1])]
+        if fair_bid > bars['high'][-1]:
+            return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
+        elif fair_ask < bars['low'][-1]:
+            return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.SELL, bars['close'][-1])]
 
-    def get_fair(self, ticker) -> Tuple[float]:
+    def get_fair(self, bars) -> Tuple[float]:
         ''' Main logic goes here '''
         """ Sample data
         {'symbol': 'AVGO', 'datetime': [Timestamp('2022-12-23 18:21:00'), Timestamp('2022-12-23 18:23:00'), Timestamp('2022-12-23 18:38:00'), ..., Timestamp('2022-12-27 15:05:00')], 'open': [552.46, 552.025, 552.27, 551.28, ..., 549.1931, 548.835, 547.55], 'high': [552.71, 552.71, 552.62, ..., 552.33, 552.33, 552.33, 552.17, 553.43, 553.82, 554.33], 'low': [550.31, 550.31, 550.31, 550.31, 550.34, ..., 546.94, 546.94, 546.94, 547.15], 'close': [551.8, 551.18, 551.53, ..., 553.41, 553.82, 553.88], 'volume': [68593.0, 72239.0, 82382.0, 90555.0, ..., 157149.0, 163873.0, 177731.0, 151863.0, 159259.0, 202057.0, 201124.0], 'num_trades': [2907.0, 3027.0, 3422.0, 3858.0, 4048.0, ..., 6347.0, 5997.0, 6967.0, 6927.0], 'vol_weighted_price': [551.5756, 551.5612, 551.4433,..., 551.5816, 551.9824]}
         return: (fair_bid, fair_ask)
         """
-        data = self.bars.get_latest_bars(ticker, N=self.period)
-        fair_bid, fair_ask = self.margin_feature(self.fair_price_feature(data))
+        fair_bid, fair_ask = self.margin_feature(self.fair_price_feature(bars))
         return round(fair_bid, 2), round(fair_ask, 2)
