@@ -2,8 +2,6 @@
 Strategy object take market data as input and produce trading signal events as output
 """
 
-import warnings
-import queue
 from abc import ABCMeta, abstractmethod
 
 from typing import List
@@ -32,24 +30,27 @@ class Strategy(object, metaclass=ABCMeta):
         self.description = description
         self.period = None
 
-    def calculate_signals(self, event, historical_fair_prices=None) -> List[SignalEvent]:
+    def calculate_signals(self, event) -> List[SignalEvent]:
         '''_          Returns list(SignalEvents)
         '''
         if event.type == "MARKET":
             signals = []
             for s in self.bars.symbol_list:
-                sig = self._calculate_signal(s)
+                bars = self.get_bars(s)
+                if bars is None or bars['open'] == bars['close'] == 0.0:
+                    continue
+                sig = self._calculate_signal(bars)
                 signals += sig if sig is not None else []
         return signals
 
     @abstractmethod
-    def _calculate_signal(self, ticker) -> List[SignalEvent]:
+    def _calculate_signal(self, bars) -> List[SignalEvent]:
         raise NotImplementedError(
             "Need to implement underlying strategy logic:")
 
     def get_bars(self, ticker):
         bars_list = self.bars.get_latest_bars(ticker, N=self.period)
-        if len(bars_list['datetime']) != self.period:
+        if bars_list is None or len(bars_list['datetime']) != self.period:
             return
         return bars_list
 

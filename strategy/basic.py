@@ -16,11 +16,12 @@ class OneSidedOrderOnly(Strategy):
         super().__init__(bars)
         self.order_position = order_position
 
-    def _calculate_signal(self, ticker: str) -> List[SignalEvent]:
-        bars_list = self.bars.get_latest_bars(ticker)
+    def _calculate_signal(self, bars) -> List[SignalEvent]:
+        symbol = bars['symbol']
+        bars_list = self.bars.get_latest_bars(symbol)
         if len(bars_list["datetime"]) < 2:
             return
-        return [SignalEvent(ticker, bars_list["datetime"][-1], self.order_position, bars_list["close"][-1])]
+        return [SignalEvent(symbol, bars_list["datetime"][-1], self.order_position, bars_list["close"][-1])]
 
 
 class BoundedPercChange(Strategy):
@@ -36,22 +37,23 @@ class BoundedPercChange(Strategy):
             raise Exception("limit has to be 0 < limit < 1")
         self.limit = limit
         self.contrarian = strat_contrarian
+        self.period = 2
 
     def _perc_change(self, values: List[float]):
         # before, after
         return [(j-i) / j for i, j in zip(values[:1], values[1:])]
 
-    def _calculate_signal(self, ticker) -> List[SignalEvent]:
-        bars_list = self.bars.get_latest_bars(ticker, N=2)
-        if len(bars_list["datetime"]) < 2:
+    def _calculate_signal(self, bars) -> List[SignalEvent]:
+        symbol = bars['symbol']
+        if len(bars["datetime"]) < 2:
             return
-        perc_chg = self._perc_change(bars_list["close"])[-1]
+        perc_chg = self._perc_change(bars["close"])[-1]
         if perc_chg < self.limit and perc_chg > 0:
             order_position = OrderPosition.SELL if self.contrarian else OrderPosition.BUY
-            return [SignalEvent(ticker, bars_list["datetime"][-1], order_position, bars_list["close"][-1])]
+            return [SignalEvent(symbol, bars["datetime"][-1], order_position, bars["close"][-1])]
         elif perc_chg < 0 and perc_chg > -self.limit:
             order_position = OrderPosition.BUY if self.contrarian else OrderPosition.SELL
-            return [SignalEvent(ticker, bars_list["datetime"][-1], order_position, bars_list["close"][-1])]
+            return [SignalEvent(symbol, bars["datetime"][-1], order_position, bars["close"][-1])]
 
 
 class BuyAndHoldStrategy(Strategy):
@@ -69,15 +71,16 @@ class BuyAndHoldStrategy(Strategy):
         """
         super().__init__(bars)
         self._initialize_bought_status()
+        self.period = 1
 
     def _initialize_bought_status(self,):
         self.bought = {}
         for s in self.bars.symbol_list:
             self.bought[s] = False
 
-    def _calculate_signal(self, symbol) -> List[SignalEvent]:
+    def _calculate_signal(self, bars) -> List[SignalEvent]:
+        symbol = bars['symbol']
         if not self.bought[symbol]:
-            bars = self.bars.get_latest_bars(symbol, N=1)
             # there's an entry
             if bars is not None and len(bars['datetime']) > 0:
                 self.bought[symbol] = True
