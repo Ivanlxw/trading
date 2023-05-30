@@ -253,9 +253,9 @@ class RelativeCCI(Feature):
             return 0.
         avg_px_move = _get_avg_candlestick_size_weighted(data['high'], data['low'], data['num_trades'])
         multiplier = (ccis[-1] - avg_cci) / abs(avg_cci)
-        multiplier = (1 + multiplier) ** 2 if multiplier > 0 else - \
-            1 * (-1 + multiplier) ** -2
-        return multiplier * avg_px_move
+        # multiplier = multiplier ** 2 if multiplier > 0 else - \
+        #     1 * (-1 + multiplier) ** -2
+        return np.sign(multiplier) * np.log(abs(multiplier)) * avg_px_move
 
 ####  MOMENTUM FEATURES  ####
 

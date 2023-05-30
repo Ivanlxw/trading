@@ -77,11 +77,12 @@ class OrderEvent(Event):
         # optional fields
         self.processed = False
         self.trade_price = None
+        self.expires = None
 
     def order_details(self,):
-        return "Order: Symbol={}, Date={}, Type={}, Trade Price = {}, Quantity={}, Direction={}".format(
-            self.symbol, self.date, self.order_type,
-            self.trade_price, self.quantity, self.direction)
+        return "Order: Symbol={}, Date={}, Type={}, SignalPrice={}, TradePrice = {}, Quantity={}, Direction={}, Expires={}".format(
+            self.symbol, self.date, self.order_type, self.signal_price,
+            self.trade_price, self.quantity, self.direction, self.expires)
 
 
 class FillEvent(Event):

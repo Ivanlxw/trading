@@ -107,6 +107,8 @@ class Portfolio(object, metaclass=ABCMeta):
         bars = {}
         for sym in self.symbol_list:
             bars[sym] = data_provider.get_latest_bars(sym, N=1)
+        ## TODO: Unrealiable, read based on comb index or something like that, 
+        ## or change DataHandler to be a single queue containing md from ALL symbols sorted by time
         for ohlcv in bars.values():
             if len(ohlcv['datetime']) >= 1:
                 self.current_holdings['datetime'] = ohlcv['datetime'][-1]
@@ -243,11 +245,14 @@ class FixedTradeValuePortfolio(Portfolio):
                  order_type=OrderType.LIMIT, expires: int = 1):
         super().__init__(portfolio_name, rebalance, initial_capital, order_type, expires)
         self.trade_value = trade_value
+        self.max_qty = max_qty
 
     def generate_order(self, signal: SignalEvent) -> OrderEvent:
+        if signal.price == 0:
+            return
         qty = self.trade_value // signal.price
         if qty > 0: 
-            return OrderEvent(signal.symbol, signal.datetime, qty, signal.order_position, self.order_type, signal.price)
+            return OrderEvent(signal.symbol, signal.datetime, min(qty, self.max_qty), signal.order_position, self.order_type, signal.price)
 
 
 class PercentagePortFolio(Portfolio):

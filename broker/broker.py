@@ -119,22 +119,21 @@ class SimulatedBroker(Broker):
         if event is None:
             return False
         if event.type == "ORDER" and self.check_gk(event):
-            if event is not None:
-                latest_snapshot = self.bars.get_latest_bars(event.symbol)
-                if event.order_type == OrderType.LIMIT:
-                    if not self._order_expired(latest_snapshot, event):
-                        if not event.processed:
-                            event.processed = True
-                            event.date += datetime.timedelta(days=1)
-                            order_queue.put(event)
-                            return False
-                        if self._filter_execute_order(latest_snapshot, event):
-                            return self._put_fill_event(event, event_queue)
+            latest_snapshot = self.bars.get_latest_bars(event.symbol)
+            if event.order_type == OrderType.LIMIT:
+                if not self._order_expired(latest_snapshot, event):
+                    if not event.processed:
+                        event.processed = True
                         event.date += datetime.timedelta(days=1)
                         order_queue.put(event)
-                elif event.order_type == OrderType.MARKET:
-                    event.trade_price = latest_snapshot["close"][-1]
-                    return self._put_fill_event(event, event_queue)
+                        return False
+                    if self._filter_execute_order(latest_snapshot, event):
+                        return self._put_fill_event(event, event_queue)
+                    event.date += datetime.timedelta(days=1)
+                    order_queue.put(event)
+            elif event.order_type == OrderType.MARKET:
+                event.trade_price = latest_snapshot["close"][-1]
+                return self._put_fill_event(event, event_queue)
             return False
         return False
 
