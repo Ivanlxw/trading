@@ -45,28 +45,29 @@ class Broker(ABC):
         raise NotImplementedError("Should implement execute_order()")
 
     @abstractmethod
-    def calculate_commission(self,):
+    def calculate_commission(
+        self,
+    ):
         """
-        Takes an OrderEvent and calculates commission based 
-        on the details of the order it, add as argument for 
+        Takes an OrderEvent and calculates commission based
+        on the details of the order it, add as argument for
         FillEvent
         """
         raise NotImplementedError("Implement calculate_commission()")
 
     def check_filled_order(self, event_queue):
-        """ More for live trading, since we send q request with no response from web api, we need to check via API for pending & filled orders"""
-        pass 
+        """More for live trading, since we send q request with no response from web api, we need to check via API for pending & filled orders"""
+        pass
 
     def update_portfolio_positions(self):
-        """ Update for alpaca and TDA, use API call to update Portfolio class positions"""
+        """Update for alpaca and TDA, use API call to update Portfolio class positions"""
 
     def get_account_details(self):
-        """ For live brokers """
+        """For live brokers"""
         pass
 
     def check_gk(self, event: OrderEvent):
-        return all(gk.check_gk(event, self.port.current_holdings)
-            for gk in self.gatekeepers)
+        return all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers)
 
 
 """
@@ -90,21 +91,19 @@ class SimulatedBroker(Broker):
 
     def _filter_execute_order(self, latest_snapshot, order_event: OrderEvent) -> bool:
         if order_event.order_type == OrderType.LIMIT:
-            """                
+            """
             print("Price data:", price_data_dict)
             print("OrderEvent: ", {
-                "Symbol": event.symbol, 
-                "Price": event.signal_price, 
+                "Symbol": event.symbol,
+                "Price": event.signal_price,
                 "Direction": event.direction,
                 "Expires": event.expires
             })
             """
             if (
-                order_event.signal_price > latest_snapshot["high"][-1]
-                and order_event.direction == OrderPosition.BUY
+                order_event.signal_price > latest_snapshot["high"][-1] and order_event.direction == OrderPosition.BUY
             ) or (
-                order_event.signal_price < latest_snapshot["low"][-1]
-                and order_event.direction == OrderPosition.SELL
+                order_event.signal_price < latest_snapshot["low"][-1] and order_event.direction == OrderPosition.SELL
             ):
                 return False
         return True
@@ -112,7 +111,7 @@ class SimulatedBroker(Broker):
     def _put_fill_event(self, order_event: OrderEvent, event_queue):
         order_event.trade_price = order_event.signal_price
         fill_event = FillEvent(order_event, self.calculate_commission())
-        event_queue.put(fill_event)
+        event_queue.appendleft(fill_event)
         return True
 
     def execute_order(self, event: OrderEvent, event_queue, order_queue) -> bool:
@@ -154,7 +153,7 @@ class IBBroker(Broker, EWrapper, EClient):
         """
         Connect to the Trader Workstation (TWS) running on the
         usual port of 7496, with a clientId of 10.
-        The clientId is chosen by us and we will need 
+        The clientId is chosen by us and we will need
         separate IDs for both the broker connection and
         market data connection, if the latter is used elsewhere.
         - Should run in a new thread
@@ -172,7 +171,7 @@ class IBBroker(Broker, EWrapper, EClient):
         Creates the initial order ID used for Interactive
         Brokers to keep track of submitted orders.
 
-        Can always reset the current API order ID via: 
+        Can always reset the current API order ID via:
         Trader Workstation > Global Configuration > API Settings panel:
         """
         # will use "1" as the default for now.
@@ -197,17 +196,11 @@ class IBBroker(Broker, EWrapper, EClient):
 
     def _error_handler(self, msg):
         # Handle open order orderId processing
-        if (
-            msg.typeName == "openOrder"
-            and msg.orderId == self.order_id
-            and not self.fill_dict.has_key(msg.orderId)
-        ):
+        if msg.typeName == "openOrder" and msg.orderId == self.order_id and not self.fill_dict.has_key(msg.orderId):
             self.create_fill_dict_entry(msg)
         # Handle Fills
         elif (
-            msg.typeName == "orderStatus"
-            and msg.status == "Filled"
-            and self.fill_dict[msg.orderId]["filled"] == False
+            msg.typeName == "orderStatus" and msg.status == "Filled" and self.fill_dict[msg.orderId]["filled"] == False
         ):
             self.create_fill(msg)
         print("Server Response: {}, {}\n".format(msg.typeName, msg))
@@ -226,9 +219,9 @@ class IBBroker(Broker, EWrapper, EClient):
 
     def create_order(self, order_type, quantity, action):
         """
-            order_type - MARKET, LIMIT for Market or Limit orders
-            quantity - Integral number of assets to order
-            action - 'BUY' or 'SELL'
+        order_type - MARKET, LIMIT for Market or Limit orders
+        quantity - Integral number of assets to order
+        action - 'BUY' or 'SELL'
         """
         order = OrderEvent()
         order.m_orderType = order_type
@@ -257,11 +250,9 @@ class IBBroker(Broker, EWrapper, EClient):
         direction = fd["direction"]
         fill_cost = msg.avgFillPrice
 
-        fill = FillEvent(
-            datetime.datetime.utcnow(), symbol, exchange, filled, direction, fill_cost
-        )
+        fill = FillEvent(datetime.datetime.utcnow(), symbol, exchange, filled, direction, fill_cost)
         self.fill_dict[msg.orderId]["filled"] = True
-        event_queue.put(fill)
+        event_queue.appendleft(fill)
 
     def execute_order(self, event) -> bool:
         if event is None:
@@ -345,7 +336,7 @@ class TDABroker(Broker):
         except selenium.common.exceptions.WebDriverException:
             new_url = driver.current_url
             code = new_url.split("code=")[1]
-            logging.info("Coded:\n"+code)
+            logging.info("Coded:\n" + code)
             return code
         finally:
             driver.close()
@@ -357,7 +348,7 @@ class TDABroker(Broker):
             code = self._signin_code()
             if code is not None:
                 code = urllib.parse.unquote(code)
-                logging.info("Decoded:\n"+code)
+                logging.info("Decoded:\n" + code)
                 params = {
                     "grant_type": "authorization_code",
                     "access_type": "offline",
@@ -379,8 +370,7 @@ class TDABroker(Broker):
                 else:
                     print(res)
                     print(res.json())
-                    raise Exception(
-                        f"API POST exception: Error {res.status_code}")
+                    raise Exception(f"API POST exception: Error {res.status_code}")
             else:
                 raise Exception("Could not sign in and obtain code")
         elif grant_type == "refresh":
@@ -432,28 +422,23 @@ class TDABroker(Broker):
                     "session": "NORMAL",
                     "duration": "DAY",
                     "orderStrategyType": "SINGLE",
-                    "orderLegCollection": [{
-                        "instruction": "BUY" if event.direction == OrderPosition.BUY else "SELL",
-                        "quantity": event.quantity,
-                        "instrument": {
-                            "symbol": event.symbol,
-                            "assetType": "EQUITY"
+                    "orderLegCollection": [
+                        {
+                            "instruction": "BUY" if event.direction == OrderPosition.BUY else "SELL",
+                            "quantity": event.quantity,
+                            "instrument": {"symbol": event.symbol, "assetType": "EQUITY"},
                         }
-                    }]
+                    ],
                 }
                 if data["orderType"] == "LIMIT":
                     data["price"] = event.signal_price
                 res = requests.post(
                     f"https://api.tdameritrade.com/v1/accounts/{self.account_id}/orders",
                     data=json.dumps(data),
-                    headers={
-                        "Authorization": f"Bearer {self.access_token}",
-                        "Content-Type": "application/json"
-                    }
+                    headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"},
                 )
                 if not res.ok:
-                    log_message(
-                        f"Place Order Unsuccessful: {event.order_details()}\n{res.status_code}\n{res.json()}")
+                    log_message(f"Place Order Unsuccessful: {event.order_details()}\n{res.status_code}\n{res.json()}")
                     log_message(res.text)
                     return False
                 self.pending_orders.append(event)
@@ -464,29 +449,28 @@ class TDABroker(Broker):
     def check_filled_order(self, event_queue):
         res = requests.get(
             f"https://api.tdameritrade.com/v1/accounts/{self.account_id}/orders",
-            headers={
-                "Authorization": f"Bearer {self.access_token}",
-                "Content-Type": "application/json"
-            }
+            headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"},
         )
         prev_orders = res.json()
         for order in prev_orders:
-            if order['quantity'] == order['filledQuantity'] and \
-                    order['instrument']['symbol'] == self.pending_orders[0] and \
-                    order['quantity'] == self.pending_orders[0].quantity:
+            if (
+                order["quantity"] == order["filledQuantity"]
+                and order["instrument"]["symbol"] == self.pending_orders[0]
+                and order["quantity"] == self.pending_orders[0].quantity
+            ):
                 # Order filled
                 event = self.pending_orders[0]
-                event.trade_price = order['price']
+                event.trade_price = order["price"]
                 fill_event = FillEvent(event, self.calculate_commission())
-                event_queue.put(fill_event)
-                self.pending_orders.pop(0)
+                event_queue.appendleft(fill_event)
+                self.pending_orders.get(0)
 
     def cancel_order(self, order_id) -> bool:
         # NOTE: Unused and only skeleton.
         # TODO: Implement while improving TDABroker class
         res = requests.delete(
             f"https://api.tdameritrade.com/v1/accounts/{self.account_id}/orders/{order_id}",
-            headers={"Authorization": f"Bearer {self.access_token}"}
+            headers={"Authorization": f"Bearer {self.access_token}"},
         )
         if res.ok:
             return True
@@ -501,12 +485,13 @@ class TDABroker(Broker):
             params={
                 "type": "ALL",
             },
-            headers={"Authorization": f"Bearer {self.access_token}"}
+            headers={"Authorization": f"Bearer {self.access_token}"},
         ).json()
 
     def update_portfolio_positions(self):
         acct_details = self.get_account_details_with_positions()
-        assert "securitiesAccount" in acct_details.keys() and "positions" in acct_details["securitiesAccount"].keys(
+        assert (
+            "securitiesAccount" in acct_details.keys() and "positions" in acct_details["securitiesAccount"].keys()
         ), "positions does not exit in queries acct details"
         position_list = acct_details["securitiesAccount"]["positions"]
         cur_holdings = dict()
@@ -515,12 +500,11 @@ class TDABroker(Broker):
             inst_qty = pos_details["longQuantity"]
             avg_trade_px = pos_details["averagePrice"]
             cur_holdings[pos_details["instrument"]["symbol"]] = dict(
-                quantity=inst_qty,
-                average_trade_price=avg_trade_px
+                quantity=inst_qty, average_trade_price=avg_trade_px
             )
             total += inst_qty * avg_trade_px
         cur_holdings["cash"] = acct_details["securitiesAccount"]["currentBalances"]["cashBalance"]
-        cur_holdings['total'] = total + cur_holdings["cash"]
+        cur_holdings["total"] = total + cur_holdings["cash"]
         self.port.current_holdings.update(cur_holdings)
         self.port.write_curr_holdings()
 
@@ -543,7 +527,7 @@ class AlpacaBroker(Broker):
             headers={
                 "APCA-API-KEY-ID": os.environ["alpaca_key_id"],
                 "APCA-API-SECRET-KEY": os.environ["alpaca_secret_key"],
-            }
+            },
         ).json()
 
     """ ORDERS """
@@ -584,12 +568,13 @@ class AlpacaBroker(Broker):
                         event.trade_price = event.signal_price
                 except alpaca_trade_api.rest.APIError as e:
                     log_message(
-                        f"Status Code [{e.status_code}] {e.code}: {str(e)},order_details={event.order_details()}")
+                        f"Status Code [{e.status_code}] {e.code}: {str(e)},order_details={event.order_details()}"
+                    )
                     return False
                 if order.status == "accepted":
                     log_message(f"Order filled: {order}")
                     fill_event = FillEvent(event, self.calculate_commission())
-                    event_queue.put(fill_event)
+                    event_queue.appendleft(fill_event)
                     return True
         return False
 
@@ -604,14 +589,10 @@ class AlpacaBroker(Broker):
     def get_positions(self):
         return self.api.list_positions()
 
-    def get_historical_bars(
-        self, ticker, timeframe, start, end, limit: int = None
-    ) -> pd.DataFrame:
+    def get_historical_bars(self, ticker, timeframe, start, end, limit: int = None) -> pd.DataFrame:
         assert timeframe in ["1Min", "5Min", "15Min", "day", "1D"]
         if limit is not None:
-            return self.api.get_barset(
-                ticker, timeframe, start=start, end=end, limit=limit
-            ).df
+            return self.api.get_barset(ticker, timeframe, start=start, end=end, limit=limit).df
         return self.api.get_barset(ticker, timeframe, start=start, end=end).df
 
     def get_quote(self, ticker):
@@ -623,11 +604,8 @@ class AlpacaBroker(Broker):
         for pos_details in self.get_positions():
             inst_qty = float(pos_details.qty)
             avg_trade_px = float(pos_details.avg_entry_price)
-            cur_holdings[pos_details.symbol] = dict(
-                quantity=inst_qty,
-                average_trade_price=avg_trade_px
-            )
+            cur_holdings[pos_details.symbol] = dict(quantity=inst_qty, average_trade_price=avg_trade_px)
             total += inst_qty * avg_trade_px
         cur_holdings["cash"] = float(self.get_account_details().cash)
-        cur_holdings['total'] = total + cur_holdings["cash"]
+        cur_holdings["total"] = total + cur_holdings["cash"]
         self.port.current_holdings.update(cur_holdings)

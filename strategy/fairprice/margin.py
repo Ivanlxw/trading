@@ -3,7 +3,7 @@ class Margin:
         self._fn = fn
 
     def __call__(self, price):
-        """ Margin: returns tuple of (fair_bid, fair_ask) """
+        """Margin: returns tuple of (fair_bid, fair_ask)"""
         return self._fn(price)
 
     def __add__(self, other):
@@ -31,7 +31,9 @@ class PercentageMargin(Margin):
     def _perc_margins(self, perc) -> callable:
         def _perc_margins(fair):
             return fair * (1 - perc), fair * (1 + perc) + 1e-5
+
         return _perc_margins
+
 
 class AsymmetricPercentageMargin(Margin):
     def __init__(self, perc: tuple) -> None:
@@ -44,13 +46,16 @@ class AsymmetricPercentageMargin(Margin):
     def _perc_margins(self, perc) -> callable:
         def _perc_margins(fair):
             return fair * (1 - perc[0]), fair * (1 + perc[1]) + 1e-5
+
         return _perc_margins
+
 
 class AbsMargin(Margin):
     def __init__(self, price_margin) -> None:
         super().__init__(lambda fair_price: self._absolute_margins(price_margin)(fair_price))
-    
+
     def _absolute_margins(px_margin):
         def _abs_margins(fair):
             return fair - px_margin, fair + px_margin + 1e-5
+
         return _abs_margins

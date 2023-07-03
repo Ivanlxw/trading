@@ -21,6 +21,7 @@ class Strategy(object, metaclass=ABCMeta):
     the Strategy object is agnostic to the data source, since it
     obtains the bar tuples from a queue object.
     """
+
     @abstractmethod
     def __init__(self, bars: DataHandler, description: str = ""):
         """
@@ -32,14 +33,13 @@ class Strategy(object, metaclass=ABCMeta):
         self.description = description
         self.period = None
 
-    def calculate_signals(self, event) -> List[SignalEvent]:
-        '''_          Returns list(SignalEvents)
-        '''
+    def calculate_signals(self, event, **kwargs) -> List[SignalEvent]:
+        """_          Returns list(SignalEvents)"""
         if event.type == "MARKET":
             signals = []
             for s in self.bars.symbol_list:
                 bars = self.get_bars(s)
-                if bars is None or np.isnan(bars['open'][-1]) or np.isnan(bars['close'][-1]):
+                if bars is None or np.isnan(bars["open"][-1]) or np.isnan(bars["close"][-1]):
                     continue
                 sig = self._calculate_signal(bars)
                 signals += sig if sig is not None else []
@@ -47,17 +47,14 @@ class Strategy(object, metaclass=ABCMeta):
 
     @abstractmethod
     def _calculate_signal(self, bars) -> List[SignalEvent]:
-        raise NotImplementedError(
-            "Need to implement underlying strategy logic:")
+        raise NotImplementedError("Need to implement underlying strategy logic:")
 
     def get_bars(self, ticker):
         bars_list = self.bars.get_latest_bars(ticker, N=self.period)
-        if bars_list is None or len(bars_list['datetime']) != self.period:
+        if bars_list is None or len(bars_list["datetime"]) != self.period:
             return
         return bars_list
 
     def describe(self):
-        """ Return all variables minus bars and events """
-        return {
-            f"{self.__class__.__name__}": str(self.__dict__)
-        }
+        """Return all variables minus bars and events"""
+        return {f"{self.__class__.__name__}": str(self.__dict__)}

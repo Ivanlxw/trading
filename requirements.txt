@@ -12,3 +12,4 @@ pathos
 scipy
 xgboost
 tables
+polars

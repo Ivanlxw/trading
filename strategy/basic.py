@@ -17,7 +17,7 @@ class OneSidedOrderOnly(Strategy):
         self.order_position = order_position
 
     def _calculate_signal(self, bars) -> List[SignalEvent]:
-        symbol = bars['symbol']
+        symbol = bars["symbol"]
         bars_list = self.bars.get_latest_bars(symbol)
         if len(bars_list["datetime"]) < 2:
             return
@@ -26,9 +26,9 @@ class OneSidedOrderOnly(Strategy):
 
 class BoundedPercChange(Strategy):
     """
-        Trades only when the perc change for the day is within boundaries.
-        Intended for use with MultipleStrategy
-        strat_contrarian=True means that u trade in the opp direction
+    Trades only when the perc change for the day is within boundaries.
+    Intended for use with MultipleStrategy
+    strat_contrarian=True means that u trade in the opp direction
     """
 
     def __init__(self, bars, limit: float, strat_contrarian: bool = False):
@@ -41,10 +41,10 @@ class BoundedPercChange(Strategy):
 
     def _perc_change(self, values: List[float]):
         # before, after
-        return [(j-i) / j for i, j in zip(values[:1], values[1:])]
+        return [(j - i) / j for i, j in zip(values[:1], values[1:])]
 
     def _calculate_signal(self, bars) -> List[SignalEvent]:
-        symbol = bars['symbol']
+        symbol = bars["symbol"]
         if len(bars["datetime"]) < 2:
             return
         perc_chg = self._perc_change(bars["close"])[-1]
@@ -73,15 +73,17 @@ class BuyAndHoldStrategy(Strategy):
         self._initialize_bought_status()
         self.period = 1
 
-    def _initialize_bought_status(self,):
+    def _initialize_bought_status(
+        self,
+    ):
         self.bought = {}
         for s in self.bars.symbol_list:
             self.bought[s] = False
 
     def _calculate_signal(self, bars) -> List[SignalEvent]:
-        symbol = bars['symbol']
+        symbol = bars["symbol"]
         if not self.bought[symbol]:
             # there's an entry
-            if bars is not None and len(bars['datetime']) > 0:
+            if bars is not None and len(bars["datetime"]) > 0:
                 self.bought[symbol] = True
-                return [SignalEvent(symbol, bars['datetime'][-1], OrderPosition.BUY, bars['close'][-1])]
+                return [SignalEvent(symbol, bars["datetime"][-1], OrderPosition.BUY, bars["close"][-1])]

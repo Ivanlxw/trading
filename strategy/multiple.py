@@ -13,12 +13,8 @@ class MultipleStrategy(Strategy, ABC):
         self.strategies = strategies
 
     def order_same_dir(self, strategies: list):
-        return all(
-            [strat is not None and strat.order_position ==
-                OrderPosition.BUY for strat in strategies]
-        ) or all(
-            [strat is not None and strat.order_position ==
-                OrderPosition.SELL for strat in strategies]
+        return all([strat is not None and strat.order_position == OrderPosition.BUY for strat in strategies]) or all(
+            [strat is not None and strat.order_position == OrderPosition.SELL for strat in strategies]
         )
 
     def generate_final_strat(self, strat_list: List[SignalEvent]) -> List[SignalEvent]:
@@ -45,14 +41,11 @@ class MultipleAllStrategy(MultipleStrategy):
         return []
 
     def describe(self) -> dict:
-        return {
-            "class": self.__class__.__name__,
-            "strategies": [strat.describe() for strat in self.strategies]
-        }
+        return {"class": self.__class__.__name__, "strategies": [strat.describe() for strat in self.strategies]}
 
 
 class MultipleAnyStrategy(MultipleStrategy):
-    def __init__(self, bars, events, strategies: List[Strategy], min_matches: int=1, description="") -> None:
+    def __init__(self, bars, events, strategies: List[Strategy], min_matches: int = 1, description="") -> None:
         super().__init__(bars, events, strategies, description)
         self.min_matches = min_matches  # number of same signal to register signal
 
@@ -68,14 +61,11 @@ class MultipleAnyStrategy(MultipleStrategy):
         return []
 
     def describe(self) -> dict:
-        return {
-            "class": self.__class__.__name__,
-            "strategies": [strat.describe() for strat in self.strategies]
-        }
+        return {"class": self.__class__.__name__, "strategies": [strat.describe() for strat in self.strategies]}
 
 
 class MultipleSendAllStrategy(MultipleStrategy):
-    """ Sends ALL strategies - save space holding dataframes in memory when running live"""
+    """Sends ALL strategies - save space holding dataframes in memory when running live"""
 
     def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
         super().__init__(bars, events, strategies, description)
@@ -90,7 +80,4 @@ class MultipleSendAllStrategy(MultipleStrategy):
         return strategies
 
     def describe(self) -> dict:
-        return {
-            "class": self.__class__.__name__,
-            "strategies": [strat.describe() for strat in self.strategies]
-        }
+        return {"class": self.__class__.__name__, "strategies": [strat.describe() for strat in self.strategies]}

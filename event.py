@@ -8,6 +8,7 @@ class Event(object):
     (inherited) events, that will trigger further events in the
     trading infrastructure.
     """
+
     pass
 
 
@@ -38,16 +39,22 @@ class SignalEvent(Event):
 
     def __init__(self, symbol, datetime, order_position: OrderPosition, price: float, other_details: str = ""):
         # SignalEvent('GOOG', timestamp, OrderPosition.LONG)    # timestamp can be a string or the big numbers
-        self.type = 'SIGNAL'
+        self.type = "SIGNAL"
         self.symbol = symbol
         self.datetime = datetime
         self.order_position = order_position
         self.price = price
         self.other_details = other_details
+        # Optional fields
+        self.quantity = None
+        self.order_type = None
 
     def details(self):
         date_str = self.datetime.strftime("%Y/%m/%d")
-        return f"Symbol: {self.symbol}\nDate:{date_str}\nPrice:{self.price}\nDirection:{self.order_position}\n[DETAILS] {self.other_details}"
+        return (
+            f"Symbol: {self.symbol}\nDate:{date_str}\nPrice:{self.price}\nDirection:{self.order_position}\n"
+            f"Quantity={self.quantity}\n[DETAILS] {self.other_details}"
+        )
 
 
 class OrderEvent(Event):
@@ -57,8 +64,8 @@ class OrderEvent(Event):
     This ultimately leads to OrderEvents that will be sent to an brokerHandler.
     """
 
-    def __init__(self, symbol, date, quantity, direction: OrderPosition, order_type, price):
-        """ Params
+    def __init__(self, symbol, date, quantity, direction: OrderPosition, order_type, price, multiplier):
+        """Params
         order_type - MARKET or LIMIT for Market or Limit
         quantity - non-nevgative integer
         direction - BUY or SELL for long or short
@@ -67,22 +74,33 @@ class OrderEvent(Event):
         assert quantity > 0
         if not (direction == OrderPosition.BUY or direction == OrderPosition.SELL):
             raise AssertionError(f"Direction is not BUY or SELL: {direction}")
-        self.type = 'ORDER'
+        self.type = "ORDER"
         self.symbol = symbol
         self.date = date
         self.quantity = quantity
         self.direction = direction
         self.signal_price = price
         self.order_type = order_type
+        self.multiplier = multiplier
         # optional fields
         self.processed = False
         self.trade_price = None
         self.expires = None
 
-    def order_details(self,):
-        return "Order: Symbol={}, Date={}, Type={}, SignalPrice={}, TradePrice = {}, Quantity={}, Direction={}, Expires={}".format(
-            self.symbol, self.date, self.order_type, self.signal_price,
-            self.trade_price, self.quantity, self.direction, self.expires)
+    def details(
+        self,
+    ):
+        return "Order: Symbol={}, Date={}, Type={}, SignalPrice={}, TradePrice = {}, Quantity={}, Direction={}, Expires={}, Multiplier={}".format(
+            self.symbol,
+            self.date,
+            self.order_type,
+            self.signal_price,
+            self.trade_price,
+            self.quantity,
+            self.direction,
+            self.expires,
+            self.multiplier,
+        )
 
 
 class FillEvent(Event):
@@ -95,6 +113,7 @@ class FillEvent(Event):
     When an brokerHandler receives an OrderEvent it must transact the order.
     Once an order has been transacted it generates a FillEvent
     """
+
     # FillEvent(order_event, calculate_commission())
 
     def __init__(self, order_event: OrderEvent, commission):
@@ -108,6 +127,6 @@ class FillEvent(Event):
         fill_cost - The holdings value in dollars.
         commission - An optional commission sent from IB.
         """
-        self.type = 'FILL'
+        self.type = "FILL"
         self.order_event: OrderEvent = order_event
         self.commission = commission

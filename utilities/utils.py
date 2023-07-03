@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 
@@ -13,3 +14,9 @@ def timestamp_to_ms(ts: pd.Timestamp):
 
 def daily_date_range(start: pd.Timestamp, end: pd.Timestamp):
     return pd.date_range(start, end)
+
+
+def bar_is_valid(bar):
+    if len(bar["datetime"]) == 0:
+        return False
+    return not np.isnan(bar["close"][-1]) and not np.isnan(bar["open"][-1])

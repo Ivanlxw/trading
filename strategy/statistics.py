@@ -11,9 +11,10 @@ from trading.utilities.enum import OrderPosition
 
 
 class RelativeExtrema(Strategy):
-    def __init__(self, bars, events, extrema_period, consecutive=2, percentile: int = 10, strat_contrarian: bool = True) -> None:
-        super().__init__(bars, events,
-                         f"RelativeExtrema: extrema_period={extrema_period}, percentile={percentile}")
+    def __init__(
+        self, bars, events, extrema_period, consecutive=2, percentile: int = 10, strat_contrarian: bool = True
+    ) -> None:
+        super().__init__(bars, events, f"RelativeExtrema: extrema_period={extrema_period}, percentile={percentile}")
         self.extrema_period = extrema_period
         self.consecutive = consecutive
         self.counter = 0
@@ -22,30 +23,43 @@ class RelativeExtrema(Strategy):
 
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
         bars = self.bars.get_latest_bars(symbol, N=self.extrema_period)
-        if len(bars['datetime']) != self.extrema_period:
+        if len(bars["datetime"]) != self.extrema_period:
             return
         if bars["close"][-1] < np.percentile(bars["close"], self.percentile):
             if self.contrarian:
                 order_posn = OrderPosition.BUY
             else:
                 order_posn = OrderPosition.SELL
-            return [SignalEvent(
-                bars['symbol'], bars['datetime'][-1],
-                order_posn, bars['close'][-1], f"Latest close < {self.percentile} percentile")]
-        elif bars["close"][-1] > np.percentile(bars["close"], 100-self.percentile):
+            return [
+                SignalEvent(
+                    bars["symbol"],
+                    bars["datetime"][-1],
+                    order_posn,
+                    bars["close"][-1],
+                    f"Latest close < {self.percentile} percentile",
+                )
+            ]
+        elif bars["close"][-1] > np.percentile(bars["close"], 100 - self.percentile):
             if self.contrarian:
                 order_posn = OrderPosition.SELL
             else:
                 order_posn = OrderPosition.BUY
-            return [SignalEvent(
-                bars['symbol'], bars['datetime'][-1],
-                order_posn, bars['close'][-1], f"Latest close > {100-self.percentile} percentile")]
+            return [
+                SignalEvent(
+                    bars["symbol"],
+                    bars["datetime"][-1],
+                    order_posn,
+                    bars["close"][-1],
+                    f"Latest close > {100-self.percentile} percentile",
+                )
+            ]
 
 
 class ExtremaBounce(Strategy):
     def __init__(self, bars, events, short_period: int, long_period: int, percentile: int = 25) -> None:
-        super().__init__(bars, events,
-                         f"Extremabounce: short={short_period}, long={long_period}, percentile={percentile}")
+        super().__init__(
+            bars, events, f"Extremabounce: short={short_period}, long={long_period}, percentile={percentile}"
+        )
         self.short_period = short_period
         self.long_period = long_period
         self.percentile = percentile
@@ -54,15 +68,27 @@ class ExtremaBounce(Strategy):
         bars_list = self.bars.get_latest_bars(ticker, N=self.long_period)
         if len(bars_list["datetime"]) < self.long_period:
             return
-        if bars_list["close"][-1] < np.percentile(bars_list["close"], self.percentile) and bars_list["close"][-1] == max(bars_list["close"][-self.short_period:]):
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], self.description)]
-        elif bars_list["close"][-1] > np.percentile(bars_list["close"], 100-self.percentile) and bars_list["close"][-1] == min(bars_list["close"][-self.short_period:]):
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], self.description)]
+        if bars_list["close"][-1] < np.percentile(bars_list["close"], self.percentile) and bars_list["close"][
+            -1
+        ] == max(bars_list["close"][-self.short_period :]):
+            return [
+                SignalEvent(
+                    ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], self.description
+                )
+            ]
+        elif bars_list["close"][-1] > np.percentile(bars_list["close"], 100 - self.percentile) and bars_list["close"][
+            -1
+        ] == min(bars_list["close"][-self.short_period :]):
+            return [
+                SignalEvent(
+                    ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], self.description
+                )
+            ]
 
 
 class LongTermCorrTrend(Strategy):
     """
-        Very slow
+    Very slow
     """
 
     def __init__(self, bars, events, period, corr: float = 0.5, strat_contrarian: bool = True):
@@ -73,12 +99,11 @@ class LongTermCorrTrend(Strategy):
 
     def _calculate_signal(self, ticker) -> List[SignalEvent]:
         bars_list = self.bars.get_latest_bars(ticker, N=self.period)
-        if len(bars_list['datetime']) != self.period:
+        if len(bars_list["datetime"]) != self.period:
             return
         sma_vals = talib.SMA(np.array(bars_list["close"]), timeperiod=20)
         sma_vals = sma_vals[~np.isnan(sma_vals)]
-        corr = stats.spearmanr(
-            range(len(sma_vals)), sma_vals).correlation
+        corr = stats.spearmanr(range(len(sma_vals)), sma_vals).correlation
         if corr > self.corr_cap:
             if self.contrarian:
                 order_posn = OrderPosition.SELL
@@ -95,7 +120,7 @@ class LongTermCorrTrend(Strategy):
 
 class EitherSide(Strategy):
     """
-        EitherSide = max(close_price_series) / close_price_series[-1] - 1 * 100%
+    EitherSide = max(close_price_series) / close_price_series[-1] - 1 * 100%
     """
 
     def __init__(self, bars, events, period, side: float):
@@ -108,16 +133,24 @@ class EitherSide(Strategy):
         bars_list = self.get_bars(ticker)
         if bars_list is None:
             return
-        side = (np.mean(bars_list['close']) / bars_list['close'][-1] - 1)
+        side = np.mean(bars_list["close"]) / bars_list["close"][-1] - 1
         if side > self.side:
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"Upside: {side}")]
+            return [
+                SignalEvent(
+                    ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"Upside: {side}"
+                )
+            ]
         elif side < -self.side:
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], f"Downside: {side}")]
+            return [
+                SignalEvent(
+                    ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], f"Downside: {side}"
+                )
+            ]
 
 
 class Trending(Strategy):
     """
-        Trending - Up = BUY, Down = SELL. IF contrarian then vice-versa
+    Trending - Up = BUY, Down = SELL. IF contrarian then vice-versa
     """
 
     def __init__(self, bars: DataHandler, events: queue.Queue, func, period, trending_score, description="Trending"):
@@ -128,14 +161,14 @@ class Trending(Strategy):
 
     def _calc_trending_score(self, bars_list) -> float:
         score = 0
-        values = self.func(bars_list)   # list or np.array
+        values = self.func(bars_list)  # list or np.array
         # remove all nan values
-        values = [v for v in values if not np.isnan(v)] 
+        values = [v for v in values if not np.isnan(v)]
         total = len(values) * (len(values) - 1) / 2
         for idx, val in enumerate(values):
             if idx == 0:
                 continue
-            score += idx / total * (1 if val > values[idx-1] else -1)
+            score += idx / total * (1 if val > values[idx - 1] else -1)
         return score
 
     def _calculate_signal(self, ticker) -> List[SignalEvent]:
@@ -143,9 +176,24 @@ class Trending(Strategy):
         if bars_list is None:
             return
         trending_score = self._calc_trending_score(bars_list)
-        assert abs(
-            trending_score) <= 1, f"Trending_score not < 1: {trending_score}"
+        assert abs(trending_score) <= 1, f"Trending_score not < 1: {trending_score}"
         if trending_score > self.trending_score:
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.BUY, bars_list["close"][-1], f"[BUY] trending_score: {trending_score}")]
+            return [
+                SignalEvent(
+                    ticker,
+                    bars_list["datetime"][-1],
+                    OrderPosition.BUY,
+                    bars_list["close"][-1],
+                    f"[BUY] trending_score: {trending_score}",
+                )
+            ]
         elif trending_score < -self.trending_score:
-            return [SignalEvent(ticker, bars_list["datetime"][-1], OrderPosition.SELL, bars_list["close"][-1], f"[SELL] trending_score: {trending_score}")]
+            return [
+                SignalEvent(
+                    ticker,
+                    bars_list["datetime"][-1],
+                    OrderPosition.SELL,
+                    bars_list["close"][-1],
+                    f"[SELL] trending_score: {trending_score}",
+                )
+            ]

@@ -1,4 +1,3 @@
-
 from abc import ABC, abstractmethod
 import os
 from pathlib import Path
@@ -18,7 +17,7 @@ FUNDAMENTAL_DIR = Path(os.environ["DATA_DIR"]) / "fundamental/quarterly"
 class Features(ABC):
     @abstractmethod
     def _formula(self, ohlc_data):
-        """ transformation to apply on ohlc to get desired feature"""
+        """transformation to apply on ohlc to get desired feature"""
 
 
 class RSI(Features):
@@ -34,7 +33,9 @@ class CCI(Features):
         self.period = period
 
     def _formula(self, ohlc_data):
-        return talib.CCI(np.array(ohlc_data["high"]), np.array(ohlc_data["low"]), np.array(ohlc_data["close"]), self.period)
+        return talib.CCI(
+            np.array(ohlc_data["high"]), np.array(ohlc_data["low"]), np.array(ohlc_data["close"]), self.period
+        )
 
 
 class RelativePercentile(Features):
@@ -56,11 +57,9 @@ class QuarterlyFundamental(Features):
         self.fundamental = fundamental
 
     def get_fundamental_data(self, symbol: str):
-        if os.path.exists(FUNDAMENTAL_DIR/f"{symbol}.csv"):
-            fund_data = pd.read_csv(
-                FUNDAMENTAL_DIR/f"{symbol}.csv", index_col=0, header=0)
-            fund_data.index = fund_data.index.map(
-                lambda x: pd.to_datetime(x, infer_datetime_format=True))
+        if os.path.exists(FUNDAMENTAL_DIR / f"{symbol}.csv"):
+            fund_data = pd.read_csv(FUNDAMENTAL_DIR / f"{symbol}.csv", index_col=0, header=0)
+            fund_data.index = fund_data.index.map(lambda x: pd.to_datetime(x, infer_datetime_format=True))
             fund_data = fund_data.sort_index()
             dr = daily_date_range(fund_data.index[0], fund_data.index[-1])
             fund_data = fund_data.reindex(dr, method="pad").fillna(0)
@@ -68,16 +67,16 @@ class QuarterlyFundamental(Features):
 
     def _relevant_qtr(self, sym: str, curr_date: pd.Timestamp) -> Optional[pd.Timestamp]:
         # curr_date = pd.to_datetime(curr_date)
-        fund_data_before: list = list(
-            filter(lambda x: x <= curr_date, self.bars.fundamental_data[sym].index))
+        fund_data_before: list = list(filter(lambda x: x <= curr_date, self.bars.fundamental_data[sym].index))
         if len(fund_data_before) != 0:
             return fund_data_before[-1]
 
     def _formula(self, ohlc_data):
         sym: str = ohlc_data["symbol"]
         try:
-            fund_d = self.bars.fundamental_data[sym].loc[[self._relevant_qtr(
-                sym, d) for d in ohlc_data["datetime"]], self.fundamental]
+            fund_d = self.bars.fundamental_data[sym].loc[
+                [self._relevant_qtr(sym, d) for d in ohlc_data["datetime"]], self.fundamental
+            ]
             return pd.Series(fund_d.values, index=ohlc_data["datetime"], name=self.fundamental)
         except KeyError:
             return pd.Series(0, index=ohlc_data["datetime"], name=self.fundamental)
@@ -88,4 +87,8 @@ class DiffFromEMA(Features):
         self.period = period
 
     def _formula(self, ohlc_data):
-        return pd.Series([last-ema for last, ema in zip(ohlc_data["close"], _ema(ohlc_data["close"], self.period))], index=ohlc_data["datetime"], name="CloseDiffFromEMA")
+        return pd.Series(
+            [last - ema for last, ema in zip(ohlc_data["close"], _ema(ohlc_data["close"], self.period))],
+            index=ohlc_data["datetime"],
+            name="CloseDiffFromEMA",
+        )

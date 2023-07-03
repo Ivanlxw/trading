@@ -14,24 +14,34 @@ from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 from trading.utilities.utils import convert_ms_to_timestamp
 
+
 class BroadMarketStrategy(ABC):
     def _load_data(self, sym, freq):
-        broad_sym_fp = Path(os.environ['DATA_DIR']) / f"{freq}/{sym}.csv"
+        broad_sym_fp = Path(os.environ["DATA_DIR"]) / f"{freq}/{sym}.csv"
         assert os.path.exists(broad_sym_fp), f"path does not exist: {broad_sym_fp}"
         self.broad_data = pd.read_csv(broad_sym_fp, index_col=0, header=0)
-        self.broad_data.index = self.broad_data.index.map(
-            convert_ms_to_timestamp)
+        self.broad_data.index = self.broad_data.index.map(convert_ms_to_timestamp)
 
 
 class BroadFunctor(Strategy, BroadMarketStrategy):
     """
-      Runs strategy using data from index/etf
-      functor takes in ohlc data and returns a boolean
-      value - similar to strat_contrarian. 
-        If true, buy when value is true and sell when value is not, and vice-versa
+    Runs strategy using data from index/etf
+    functor takes in ohlc data and returns a boolean
+    value - similar to strat_contrarian.
+      If true, buy when value is true and sell when value is not, and vice-versa
     """
 
-    def __init__(self, bars, events, broad_sym: str, functor, n: int, freq: str, order_position: OrderPosition, description: str = ""):
+    def __init__(
+        self,
+        bars,
+        events,
+        broad_sym: str,
+        functor,
+        n: int,
+        freq: str,
+        order_position: OrderPosition,
+        description: str = "",
+    ):
         self.bars = bars  # used to get latest date
         self.events = events
         self.functor = functor
@@ -42,31 +52,37 @@ class BroadFunctor(Strategy, BroadMarketStrategy):
 
     def _calculate_signal(self, symbol) -> List[SignalEvent]:
         latest = self.bars.get_latest_bars(symbol, self.n)
-        curr_date = latest['datetime'][-1]
+        curr_date = latest["datetime"][-1]
         if curr_date in self.broad_data.index:
             date_idx = self.broad_data.index.get_loc(curr_date)
             if date_idx <= self.n:
                 return
             if self.functor(latest):
-                return [SignalEvent(symbol, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description)]
+                return [
+                    SignalEvent(
+                        symbol, latest["datetime"][-1], self.order_position, latest["close"][-1], self.description
+                    )
+                ]
 
     def describe(self):
         return {
-            self.__class__.__name__: {'functor': self.functor.__name__,
-                                      'n': self.n,
-                                      'description': self.description,
-                                      'OrderPosition': self.order_position.name}
+            self.__class__.__name__: {
+                "functor": self.functor.__name__,
+                "n": self.n,
+                "description": self.description,
+                "OrderPosition": self.order_position.name,
+            }
         }
 
 
 def _BELOW_FUNCTOR(ohlc_data, period: int, func) -> bool:
-    """ func: takes in ohlc_data and period (int) """
+    """func: takes in ohlc_data and period (int)"""
     ta_vals = func(np.array(ohlc_data["close"]), period)
     return ta_vals[-1] > ohlc_data["close"][-1]
 
 
 def _ABOVE_FUNCTOR(ohlc_data, period: int, func) -> bool:
-    """ func: takes in ohlc_data and period (int) """
+    """func: takes in ohlc_data and period (int)"""
     ta_vals = func(np.array(ohlc_data["close"]), period)
     return ta_vals[-1] < ohlc_data["close"][-1]
 
@@ -91,41 +107,105 @@ def _BROAD_CORR_LE(ohlc_data, period: int, corr: float) -> bool:
 
 
 def below_functor(bars, events, broad_sym, n: int, freq: str, order_position: OrderPosition, func=talib.SMA):
-    """ 
-        below_functor: Apply a function and if the last close px is below the function, gets into order_position
-        func = any function that takes in (array, n) and outputs array[n] 
     """
-    def _below_sma(data): return _BELOW_FUNCTOR(data, n, func)
-    return BroadFunctor(bars, events, broad_sym, _below_sma, n+2, freq, order_position, description=f"below_sma: {broad_sym} Below SMA")
+    below_functor: Apply a function and if the last close px is below the function, gets into order_position
+    func = any function that takes in (array, n) and outputs array[n]
+    """
+
+    def _below_sma(data):
+        return _BELOW_FUNCTOR(data, n, func)
+
+    return BroadFunctor(
+        bars,
+        events,
+        broad_sym,
+        _below_sma,
+        n + 2,
+        freq,
+        order_position,
+        description=f"below_sma: {broad_sym} Below SMA",
+    )
 
 
-def above_functor(bars, events, broad_sym, n: int, freq:str, order_position: OrderPosition, func=talib.SMA):
-    """ 
-        above_functor: Apply a function and if the last close px is above the function, gets into order_position
-        func = any function that takes in (array, n) and outputs array[n] 
+def above_functor(bars, events, broad_sym, n: int, freq: str, order_position: OrderPosition, func=talib.SMA):
     """
-    def _above_sma(data): return _ABOVE_FUNCTOR(data, n, func)
-    return BroadFunctor(bars, events, broad_sym, _above_sma, n+2, freq, order_position, description=f"above_sma: {broad_sym} above SMA")
+    above_functor: Apply a function and if the last close px is above the function, gets into order_position
+    func = any function that takes in (array, n) and outputs array[n]
+    """
+
+    def _above_sma(data):
+        return _ABOVE_FUNCTOR(data, n, func)
+
+    return BroadFunctor(
+        bars,
+        events,
+        broad_sym,
+        _above_sma,
+        n + 2,
+        freq,
+        order_position,
+        description=f"above_sma: {broad_sym} above SMA",
+    )
 
 
 def low_extrema(bars, events, broad_sym, n: int, freq: str, percentile: int, order_position: OrderPosition):
-    def n_extrema(data): return _EXTREMA(data, percentile)
-    return BroadFunctor(bars, events, broad_sym, n_extrema, n, freq, order_position, description=f"low_extrema: {broad_sym} near percentile: {percentile}")
+    def n_extrema(data):
+        return _EXTREMA(data, percentile)
+
+    return BroadFunctor(
+        bars,
+        events,
+        broad_sym,
+        n_extrema,
+        n,
+        freq,
+        order_position,
+        description=f"low_extrema: {broad_sym} near percentile: {percentile}",
+    )
 
 
 def low_cci(bars, events, broad_sym, n: int, freq: str, order_position: OrderPosition):
-    """ value = True: buy below cci = -100. Otherwise sell"""
-    def n_cci(data): return _LOW_CCI(data, n)
-    return BroadFunctor(bars, events, broad_sym, n_cci, n+2, freq, order_position, description=f"low_cci: {broad_sym} CCI below -100")
+    """value = True: buy below cci = -100. Otherwise sell"""
+
+    def n_cci(data):
+        return _LOW_CCI(data, n)
+
+    return BroadFunctor(
+        bars, events, broad_sym, n_cci, n + 2, freq, order_position, description=f"low_cci: {broad_sym} CCI below -100"
+    )
 
 
 def market_corr_value_le(bars, events, broad_sym, n: int, freq: str, corr: float, order_position: OrderPosition):
-    """ value = True: buy when market price corr < corr."""
-    def _mkt_corr(data): return _BROAD_CORR_LE(data, n, corr)
-    return BroadFunctor(bars, events, broad_sym, _mkt_corr, n, freq, order_position, description=f"market_corr_value_le: {broad_sym} corr less than {corr}")
+    """value = True: buy when market price corr < corr."""
+
+    def _mkt_corr(data):
+        return _BROAD_CORR_LE(data, n, corr)
+
+    return BroadFunctor(
+        bars,
+        events,
+        broad_sym,
+        _mkt_corr,
+        n,
+        freq,
+        order_position,
+        description=f"market_corr_value_le: {broad_sym} corr less than {corr}",
+    )
 
 
 def market_corr_value_ge(bars, events, broad_sym, n: int, freq: str, corr: float, order_position: OrderPosition):
-    """ value = True: buy when market price corr > corr."""
-    def _mkt_corr(data): return _BROAD_CORR_GE(data, n, corr)
-    return BroadFunctor(bars, events, broad_sym, _mkt_corr, n, freq, order_position, description=f"market_corr_value_ge: {broad_sym} corr more than {corr}")
+    """value = True: buy when market price corr > corr."""
+
+    def _mkt_corr(data):
+        return _BROAD_CORR_GE(data, n, corr)
+
+    return BroadFunctor(
+        bars,
+        events,
+        broad_sym,
+        _mkt_corr,
+        n,
+        freq,
+        order_position,
+        description=f"market_corr_value_ge: {broad_sym} corr more than {corr}",
+    )
