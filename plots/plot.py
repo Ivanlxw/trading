@@ -74,6 +74,9 @@ class PlotIndividual(Plot):
             )
             df = pd.merge(obs, signals, left_index=True, right_index=True, how="outer").reset_index()
             df = df.loc[~df.duplicated(), :]
+            if self.plot_fair_prices:
+                df_fair_prices = pd.DataFrame(self.historical_fair_prices[ticker])
+                df = pd.merge(df, df_fair_prices, how="left")
             row = idx // n_cols + 1
             col = idx - (row - 1) * n_cols + 1
             fig.append_trace(
@@ -112,7 +115,6 @@ class PlotIndividual(Plot):
                 )
 
             if self.plot_fair_prices:
-                df = pd.DataFrame(self.historical_fair_prices[ticker])
                 fig.append_trace(
                     go.Scatter(x=df.index, y=df["fair_bid"], line=dict(color="yellow", width=1.5)), row=row, col=col
                 )
