@@ -33,7 +33,6 @@ class FundamentalStrategy(Strategy, metaclass=ABCMeta):
                 self.bars.latest_symbol_data[sym][-1]["datetime"]
             )  # latest_symbol_data will be empty for live
         except Exception as e:
-            print(self.bars.latest_symbol_data[sym])
             raise Exception(f"[{sym}]: {e}")
         fund_data_before: list = list(filter(lambda x: x <= curr_date, self.bars.fundamental_data[sym].index))
         if len(fund_data_before) != 0:

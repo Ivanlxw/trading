@@ -1,5 +1,5 @@
-from alpaca_trade_api.entity import Order
-from trading.utilities.enum import OrderPosition, OrderType
+from trading.utilities.enum import OrderPosition
+from trading.utilities.utils import is_option
 
 
 class Event(object):
@@ -23,8 +23,9 @@ class MarketEvent(Event):
     The event object simply contains an identification that it is a market event
     """
 
-    def __init__(self):
+    def __init__(self, symbol):
         self.type = "MARKET"
+        self.symbol = symbol
 
 
 class SignalEvent(Event):
@@ -64,7 +65,7 @@ class OrderEvent(Event):
     This ultimately leads to OrderEvents that will be sent to an brokerHandler.
     """
 
-    def __init__(self, symbol, date, quantity, direction: OrderPosition, order_type, price, multiplier):
+    def __init__(self, symbol, date, quantity, direction: OrderPosition, order_type, price):
         """Params
         order_type - MARKET or LIMIT for Market or Limit
         quantity - non-nevgative integer
@@ -81,7 +82,7 @@ class OrderEvent(Event):
         self.direction = direction
         self.signal_price = price
         self.order_type = order_type
-        self.multiplier = multiplier
+        self.multiplier = 100 if is_option(self.symbol) else 1
         # optional fields
         self.processed = False
         self.trade_price = None

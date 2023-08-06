@@ -30,23 +30,23 @@ class Instrument(metaclass=ABCMeta):
         ), f"passing wrong symbol into EquityPortfolioContext({self.symbol}): {bars['symbol']}"
         if not bar_is_valid(bars):
             return
-        # elif bars["datetime"][-1] < self.latest_datetime:
-        #     print("bar should not go backwards in time")
-        #     return
         self.latest_ref_price = bars["open"][-1]
-        # self.latest_datetime = bars["datetime"]
 
     def get_value(self):
         return self.net_pos * self.latest_ref_price if self.latest_ref_price is not None else 0
 
     def update_avg_trade_price(self, signed_fill_qty, fill_px):
-        self.net_pos += signed_fill_qty
         if self.average_trade_price is None:
             self.average_trade_price = fill_px
+            return
+        if self.net_pos + signed_fill_qty == 0:
+            self.net_pos += signed_fill_qty
+            self.average_trade_price = None
             return
         self.average_trade_price = (self.average_trade_price * self.net_pos + fill_px * signed_fill_qty) / (
             self.net_pos + signed_fill_qty
         )
+        self.net_pos += signed_fill_qty
 
 
 class Equity(Instrument):
@@ -57,11 +57,11 @@ class Equity(Instrument):
 class Option(Instrument):
     def __init__(self, sym, metadata_info):
         super().__init__(sym)
-        ser = metadata_info.loc[metadata_info.ticker == sym].squeeze()
+        ser = metadata_info.iloc[0]   # .squeeze()
         self.expiry_date = ser.expiration_date.date()
         self.strike = ser.strike_price
         self.contract_type = ser.contract_type
-        self.underlying_symbol = ser.underlying
+        self.underlying_symbol = ser.underlying_sym
         self.settled = False
 
     def update_with_underlying(self, underlying_bars, event_queue):
@@ -97,13 +97,8 @@ class Option(Instrument):
                 order_pos,
                 OrderType.MARKET,
                 self.strike,
-                1,
             )
             order_event.trade_price = self.strike
             event_queue.append(FillEvent(order_event, 0.0))
         self.settled = True
         self.net_pos = 0
-
-
-def is_option(symbol):
-    return "O:" in symbol

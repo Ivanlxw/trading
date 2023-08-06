@@ -368,8 +368,8 @@ class TDABroker(Broker):
                     self.access_token = res_body["access_token"]
                     self.refresh_token = res_body["refresh_token"]
                 else:
-                    print(res)
-                    print(res.json())
+                    logging.error(res)
+                    logging.error(res.json())
                     raise Exception(f"API POST exception: Error {res.status_code}")
             else:
                 raise Exception("Could not sign in and obtain code")

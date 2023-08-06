@@ -20,3 +20,6 @@ def bar_is_valid(bar):
     if len(bar["datetime"]) == 0:
         return False
     return not np.isnan(bar["close"][-1]) and not np.isnan(bar["open"][-1])
+
+def is_option(symbol):
+    return "O:" in symbol

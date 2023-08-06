@@ -20,28 +20,28 @@ class SellStrangle(Strategy):
     def calculate_signals(self, event, **kwargs) -> List[SignalEvent]:
         assert "curr_holdings" in kwargs, "curr_holdings needs to be provided as an argument"
         signals = []
-        if event.type == "MARKET":
-            for s in self.bars.underlying_symbol_list:
-                underlying_bars = self.get_bars(s)
-                if (
-                    underlying_bars is None
-                    or np.isnan(underlying_bars["close"][-1])
-                    or np.isnan(underlying_bars["open"][-1])
-                ):
-                    continue
-                # liquidate if required
-                underlying_net_pos = kwargs["curr_holdings"][s].net_pos
-                if underlying_net_pos != 0:
-                    signal_event = SignalEvent(
-                        s,
-                        underlying_bars["datetime"][-1],
-                        OrderPosition.BUY if underlying_net_pos < 0 else OrderPosition.SELL,
-                        underlying_bars["open"][0],
-                    )
-                    signal_event.quantity = abs(underlying_net_pos)
-                    signal_event.order_type = OrderType.MARKET
-                    signals.append(signal_event)
-                signals.extend(self._calculate_signal(underlying_bars))
+        symbol = event.symbol
+        if event.type == "MARKET" and symbol in self.bars.underlying_symbol_list:
+            underlying_bars = self.get_bars(symbol)
+            if (
+                underlying_bars is None
+                or np.isnan(underlying_bars["close"][-1])
+                or np.isnan(underlying_bars["open"][-1])
+            ):
+                return signals
+            # liquidate underlying if required
+            underlying_net_pos = kwargs["curr_holdings"][symbol].net_pos
+            if underlying_net_pos != 0:
+                signal_event = SignalEvent(
+                    symbol,
+                    underlying_bars["datetime"][-1],
+                    OrderPosition.BUY if underlying_net_pos < 0 else OrderPosition.SELL,
+                    underlying_bars["open"][0],
+                )
+                signal_event.quantity = abs(underlying_net_pos)
+                signal_event.order_type = OrderType.MARKET
+                signals.append(signal_event)
+            signals.extend(self._calculate_signal(underlying_bars))
         return signals
 
     def get_fair_price_range(self, ohlcv):
@@ -66,7 +66,6 @@ class SellStrangle(Strategy):
         opening_diff = data["open"][1:] - data["close"][:-1]
         prev_day_underlying_close = data["close"][-1]
         open_diff = underlying_open - prev_day_underlying_close
-        # print(np.append(opening_diff.to_numpy(), open_diff), _ema(np.append(opening_diff.to_numpy(), open_diff), 3))
         mid_px_change = (_ema(opening_diff.to_numpy(), 3)[-1] + open_diff) / 2
         mid_px = (underlying_open + mid_px_change).to_numpy()[-1]
 
@@ -77,7 +76,7 @@ class SellStrangle(Strategy):
 
     def get_option_symbol(self, underlying, expiration_date, contract_type, strike):
         contract_type_data = self.bars.option_metadata_info.query(
-            "underlying == @underlying and expiration_date == @expiration_date and contract_type == @contract_type"
+            "underlying_sym == @underlying and expiration_date == @expiration_date and contract_type == @contract_type"
         )
         if contract_type_data.empty:
             return

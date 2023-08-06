@@ -44,14 +44,6 @@ def _ema(arr, period):
     return ema_vals
 
 
-# @nb.njit
-def _rolling_sma(arr, period):
-    sma_vals = []
-    for idx in range(1, len(arr) + 1):
-        sma_vals.append(np.average(arr[max(0, idx - period) : idx]))
-    return np.array(sma_vals)
-
-
 @nb.njit
 def _momentum(arr):
     momentum_val = 0
@@ -99,13 +91,19 @@ class TrendAwareFeatureEMA(Feature):
             return (1 + trend) * np.array(_ema(data["close"], short_term_period))
 
     def _get_trend(self, data, short_term_period):
-        # avg_candlestick_perc = (data['high'] - data['low']) / data['open']
         denom = np.sum(data["close"])
-        rolling_smas = _rolling_sma(data["close"], short_term_period)
+        rolling_smas = self._rolling_sma(data["close"], short_term_period)
         if denom == 0:
             return 0.0
         perc_auc = np.sum(data["low"] - rolling_smas) / denom
         return perc_auc
+
+    # @nb.njit
+    def _rolling_sma(self, arr, period):
+        sma_vals = []
+        for idx in range(1, len(arr) + 1):
+            sma_vals.append(np.average(arr[max(0, idx - period) : idx]))
+        return np.array(sma_vals)
 
 
 def _get_avg_candlestick_size(high, low):

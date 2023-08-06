@@ -12,10 +12,9 @@ from backtest.utilities.utils import log_message
 from trading.portfolio.instrument import (
     Equity,
     Instrument,
-    Option,
-    is_option,
+    Option
 )
-from trading.utilities.utils import bar_is_valid, convert_ms_to_timestamp
+from trading.utilities.utils import bar_is_valid, convert_ms_to_timestamp, is_option
 
 from trading.data.dataHandler import DataHandler
 from trading.event import FillEvent, OrderEvent, SignalEvent
@@ -50,7 +49,7 @@ class Portfolio(object, metaclass=ABCMeta):
         self.rebalance = rebalance
 
     def Initialize(self, symbol_list, start_ms, metadata_info):
-        self.symbol_list = symbol_list  # if self.bars.symbol_data else self.bars.symbol_list
+        self.symbol_list = symbol_list
         self.start_ts = pd.Timestamp(start_ms, unit="ms")
 
         # checks if a saved current_holdings is alr present and if present,
@@ -63,7 +62,10 @@ class Portfolio(object, metaclass=ABCMeta):
 
     def _generate_inst_port_context(self, s, metadata_info) -> Instrument:
         if is_option(s):
-            return Option(s, metadata_info)
+            sym_metadata_info = metadata_info.loc[metadata_info.ticker == s]
+            if sym_metadata_info.empty:
+                return
+            return Option(s, sym_metadata_info)
         return Equity(s)
 
     def construct_all_holdings(self):
@@ -86,7 +88,18 @@ class Portfolio(object, metaclass=ABCMeta):
         return [d]
 
     def construct_current_holdings(self, metadata_info):
-        d = dict((s, self._generate_inst_port_context(s, metadata_info)) for s in self.symbol_list)
+        d = dict()
+        options_without_metadata_info = []
+        for s in self.symbol_list:
+            context = self._generate_inst_port_context(s, metadata_info)
+            if context is None:
+                print(f"No metadata info for {s}")
+                options_without_metadata_info.append(s)
+                continue
+            d[s] = context
+        # remove from symbol_list those that do not have metadatainfo
+        self.symbol_list = [s for s in self.symbol_list if s not in options_without_metadata_info]
+
         d["cash"] = self.initial_capital
         d["commission"] = 0.0
         d["datetime"] = self.start_ts
@@ -120,41 +133,37 @@ class Portfolio(object, metaclass=ABCMeta):
             fout.write(json.dumps(curr_holdings_converted))
         log_message(f"Written curr_holdings result to {curr_holdings_fp}")
 
-    ## TODO: Change data_provider argument to a single bar
-    def update_timeindex(self, data_provider: DataHandler, event_queue):
-        bars = {}
-        for sym in self.symbol_list:
-            bars[sym] = data_provider.get_latest_bars(sym, N=1)
-        ## TODO: Unrealiable, read based on comb index or something like that,
-        ## or change DataHandler to be a single queue containing md from ALL symbols sorted by time
-        for ohlcv in bars.values():
-            # might cause err as it assumes that mkt data received is monotonic increasing (is correct)
-            self.current_holdings[ohlcv["symbol"]].update(ohlcv)
-            if (not bar_is_valid(ohlcv)) or ohlcv["datetime"][-1] < self.current_holdings["datetime"]:
-                continue
-            self.current_holdings["datetime"] = ohlcv["datetime"][-1]
+    def update_timeindex(self, symbol_bar, event_queue):
+        symbol = symbol_bar['symbol']
+        if (not bar_is_valid(symbol_bar)) or symbol_bar["datetime"][-1] < self.current_holdings["datetime"]:
+            return
+        bar_datetime = symbol_bar["datetime"][-1]
 
-        # update holdings based off last trading day
-        dh = dict((s, self.current_holdings[s].get_value()) for s in self.symbol_list)
-        dh["datetime"] = self.current_holdings["datetime"]
-        dh["cash"] = self.current_holdings["cash"]
-        dh["commission"] = self.current_holdings["commission"]
-        dh["total"] = self.current_holdings["cash"] + sum(dh[s] for s in self.symbol_list)
-
-        # append current holdings
-        self.all_holdings.append(dh)
-        self.current_holdings["total"] = dh["total"]
-        self.current_holdings["commission"] = 0.0  # reset commission for the day
-
+        if bar_datetime > self.all_holdings[-1]["datetime"]:
+            # update holdings based off last trading day
+            dh = dict((s, self.current_holdings[s].get_value()) for s in self.symbol_list)
+            dh["datetime"] = self.current_holdings["datetime"]
+            dh["cash"] = self.current_holdings["cash"]
+            dh["commission"] = self.current_holdings["commission"]
+            dh["total"] = self.current_holdings["cash"] + sum(dh[s] for s in self.symbol_list)
+            self.all_holdings.append(dh)
+            self.current_holdings["total"] = dh["total"]
+            self.current_holdings["commission"] = 0.0  # reset commission for the day
+        
+        self.current_holdings[symbol].update(symbol_bar)
+        self.current_holdings["datetime"] = bar_datetime
         if self.rebalance.need_rebalance(self.current_holdings):
             for symbol in self.symbol_list:
-                self.rebalance.rebalance(bars[symbol], self.current_holdings, event_queue)
+                self.rebalance.rebalance(symbol_bar, self.current_holdings, event_queue)
 
-    def update_option_datetime(self, data_provider: DataHandler, event_queue):
+    def update_option_datetime(self, symbol_bar, event_queue):
         # checks for expiry and account for pnl/assignment
-        for holding in self.current_holdings.values():
-            if isinstance(holding, OptionPortfolioContext):
-                holding.update_with_underlying(data_provider.get_latest_bars(holding.underlying_symbol, 3), event_queue)
+        symbol = symbol_bar['symbol']        
+        if not is_option(symbol):
+            return
+        eto_inst_ctx = self.current_holdings[symbol]
+        assert isinstance(eto_inst_ctx, Option), f"{symbol} in current_holdings has to be Option"
+        eto_inst_ctx.update_with_underlying(symbol_bar, event_queue)
 
     def update_signal(self, event: SignalEvent, event_queue):
         order = self.generate_order(event)  # list of OrderEvent
@@ -255,8 +264,7 @@ class NaivePortfolio(Portfolio):
             self.qty,
             signal.order_position,
             self.order_type,
-            signal.price,
-            100 if is_option(signal.symbol) else 1,
+            signal.price
         )
 
 
@@ -281,7 +289,6 @@ class SignalDefinedPosPortfolio(Portfolio):
             signal.order_position,
             signal.order_type,
             signal.price,
-            100 if is_option(signal.symbol) else 1,
         )
 
 
@@ -309,8 +316,7 @@ class FixedTradeValuePortfolio(Portfolio):
             signal.quantity if signal.quantity is not None else min(self.trade_value // signal.price, self.max_qty),
             signal.order_position,
             signal.order_type if signal.order_type is not None else self.order_type,
-            signal.price,
-            100 if is_option(signal.symbol) else 1,
+            signal.price
         )
 
 
@@ -346,6 +352,5 @@ class PercentagePortFolio(Portfolio):
             size,
             signal.order_position,
             self.order_type,
-            signal.price,
-            100 if is_option(signal.symbol) else 1,
+            signal.price
         )

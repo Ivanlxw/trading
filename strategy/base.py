@@ -36,13 +36,12 @@ class Strategy(object, metaclass=ABCMeta):
     def calculate_signals(self, event, **kwargs) -> List[SignalEvent]:
         """_          Returns list(SignalEvents)"""
         if event.type == "MARKET":
+            bars = self.get_bars(event.symbol)
+            if bars is None or np.isnan(bars["open"][-1]) or np.isnan(bars["close"][-1]):
+                return []
             signals = []
-            for s in self.bars.symbol_list:
-                bars = self.get_bars(s)
-                if bars is None or np.isnan(bars["open"][-1]) or np.isnan(bars["close"][-1]):
-                    continue
-                sig = self._calculate_signal(bars)
-                signals += sig if sig is not None else []
+            sig = self._calculate_signal(bars)
+            signals += (sig if sig is not None else [])
         return signals
 
     @abstractmethod
