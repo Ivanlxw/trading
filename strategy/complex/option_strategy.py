@@ -1,7 +1,9 @@
+import math
 from typing import List
 
 import numpy as np
 import polars as pl
+from backtest.utilities.utils import log_message
 
 from trading.data.dataHandler import OptionDataHandler
 from trading.utilities.enum import OrderPosition, OrderType
@@ -96,10 +98,10 @@ class SellStrangle(Strategy):
         if np.isnan(underlying_fair_low) or np.isnan(underlying_fair_high):
             return []
         put_sym = self.get_option_symbol(
-            underlying_bars["symbol"], underlying_bars["datetime"][-1].date(), "put", int(underlying_fair_low)
+            underlying_bars["symbol"], underlying_bars["datetime"][-1].date(), "put", math.floor(underlying_fair_low)
         )
         call_sym = self.get_option_symbol(
-            underlying_bars["symbol"], underlying_bars["datetime"][-1].date(), "call", int(underlying_fair_high)
+            underlying_bars["symbol"], underlying_bars["datetime"][-1].date(), "call", math.ceil(underlying_fair_high)
         )
         if put_sym is None or call_sym is None:
             return []
@@ -107,6 +109,9 @@ class SellStrangle(Strategy):
         put_bars = self.get_bars(put_sym)
         if call_bars is None or put_bars is None or np.isnan(call_bars["open"][-1]) or np.isnan(put_bars["open"][-1]):
             return []
+        log_message(
+            f"[{underlying_bars['symbol']}, {underlying_bars['datetime'][-1]}]: {underlying_fair_low}  {underlying_fair_high}",
+        )
         call_sig_event = SignalEvent(call_sym, call_bars["datetime"][-1], _SELL, call_bars["open"][-1] * 0.95)
         put_sig_event = SignalEvent(put_sym, put_bars["datetime"][-1], _SELL, put_bars["open"][-1] * 0.95)
         call_sig_event.quantity = 1

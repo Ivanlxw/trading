@@ -16,7 +16,6 @@ from trading.portfolio.instrument import (
 )
 from trading.utilities.utils import bar_is_valid, convert_ms_to_timestamp, is_option
 
-from trading.data.dataHandler import DataHandler
 from trading.event import FillEvent, OrderEvent, SignalEvent
 from trading.portfolio.rebalance import Rebalance
 from trading.utilities.enum import OrderPosition, OrderType
@@ -133,12 +132,11 @@ class Portfolio(object, metaclass=ABCMeta):
             fout.write(json.dumps(curr_holdings_converted))
         log_message(f"Written curr_holdings result to {curr_holdings_fp}")
 
-    def update_timeindex(self, symbol_bar, event_queue):
+    def update_timeindex(self, symbol_bar, event_queue) -> bool:
         symbol = symbol_bar['symbol']
         if (not bar_is_valid(symbol_bar)) or symbol_bar["datetime"][-1] < self.current_holdings["datetime"]:
-            return
+            return False
         bar_datetime = symbol_bar["datetime"][-1]
-
         if bar_datetime > self.current_holdings["datetime"]:
             # update holdings based off last trading day
             dh = dict((s, self.current_holdings[s].get_value()) for s in self.symbol_list)
@@ -155,15 +153,19 @@ class Portfolio(object, metaclass=ABCMeta):
         if self.rebalance.need_rebalance(self.current_holdings):
             for symbol in self.symbol_list:
                 self.rebalance.rebalance(symbol_bar, self.current_holdings, event_queue)
+        return True
 
-    def update_option_datetime(self, symbol_bar, event_queue):
+    def update_option_datetime(self, symbol_bar, event_queue) -> bool:
         # checks for expiry and account for pnl/assignment
         symbol = symbol_bar['symbol']        
         if not is_option(symbol):
-            return
+            return True
+        elif symbol not in self.current_holdings:
+            return False
         eto_inst_ctx = self.current_holdings[symbol]
         assert isinstance(eto_inst_ctx, Option), f"{symbol} in current_holdings has to be Option"
         eto_inst_ctx.update_with_underlying(symbol_bar, event_queue)
+        return True
 
     def update_signal(self, event: SignalEvent, event_queue):
         order = self.generate_order(event)  # list of OrderEvent

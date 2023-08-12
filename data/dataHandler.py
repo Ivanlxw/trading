@@ -95,12 +95,13 @@ class HistoricCSVDataHandler(DataHandler):
         assert self.csv_dir.is_dir()
         self.frequency_type = frequency_type
 
-        self._convert_raw_files(symbol_list)
+        self.symbol_list = symbol_list
+        self._convert_raw_files()
         assert self.symbol_list is not None, "data and symbols should have been loaded"
         self.latest_symbol_data = dict((s, []) for s in self.symbol_list)
         self.continue_backtest = True
 
-    def _convert_raw_files(self, symbol_list):
+    def _convert_raw_files(self):
         if sys.platform.startswith("win"):
             dfs = [
                 (
@@ -113,7 +114,7 @@ class HistoricCSVDataHandler(DataHandler):
                     .sort_index()
                     .loc[:, OHLC_COLUMNS],
                 )
-                for sym in symbol_list
+                for sym in self.symbol_list
             ]
         else:
             with ProcessPool(8) as p:
@@ -128,7 +129,7 @@ class HistoricCSVDataHandler(DataHandler):
                         .sort_index()
                         .loc[:, OHLC_COLUMNS],
                     ),
-                    symbol_list,
+                    self.symbol_list,
                 )
                 dfs = list(dfs)
         dne = []
