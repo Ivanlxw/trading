@@ -53,7 +53,7 @@ class DataHandler(ABC):
         self.symbol_list = self.symbol_data.symbol.unique()
         self.symbol_data = self.symbol_data.reset_index().rename(dict(timestamp="datetime"), axis=1)
         self.symbol_data['datetime'] = pd.to_datetime(self.symbol_data['datetime'], unit="ms")
-        print("Symbol data: ", self.symbol_data.shape)
+        log_message(f"Symbol data: {self.symbol_data.shape}")
         self.symbol_data = iter(self.symbol_data.to_dict('records'))
 
     @abstractmethod

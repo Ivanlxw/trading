@@ -35,12 +35,13 @@ class Instrument(metaclass=ABCMeta):
     def get_value(self):
         return self.net_pos * self.latest_ref_price if self.latest_ref_price is not None else 0
 
-    def update_avg_trade_price(self, signed_fill_qty, fill_px):
+    def update_from_fill(self, signed_fill_qty, fill_px):
         if self.average_trade_price is None:
             self.average_trade_price = fill_px
+            self.net_pos = signed_fill_qty
             return
         if self.net_pos + signed_fill_qty == 0:
-            self.net_pos += signed_fill_qty
+            self.net_pos = 0
             self.average_trade_price = None
             return
         self.average_trade_price = (self.average_trade_price * self.net_pos + fill_px * signed_fill_qty) / (

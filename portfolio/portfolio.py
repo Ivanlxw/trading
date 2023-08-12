@@ -139,17 +139,17 @@ class Portfolio(object, metaclass=ABCMeta):
             return
         bar_datetime = symbol_bar["datetime"][-1]
 
-        if bar_datetime > self.all_holdings[-1]["datetime"]:
+        if bar_datetime > self.current_holdings["datetime"]:
             # update holdings based off last trading day
             dh = dict((s, self.current_holdings[s].get_value()) for s in self.symbol_list)
             dh["datetime"] = self.current_holdings["datetime"]
             dh["cash"] = self.current_holdings["cash"]
             dh["commission"] = self.current_holdings["commission"]
-            dh["total"] = self.current_holdings["cash"] + sum(dh[s] for s in self.symbol_list)
+            dh["total"] = dh["cash"] + sum(dh[s] for s in self.symbol_list)
+            log_message(dh)
             self.all_holdings.append(dh)
             self.current_holdings["total"] = dh["total"]
             self.current_holdings["commission"] = 0.0  # reset commission for the day
-        
         self.current_holdings[symbol].update(symbol_bar)
         self.current_holdings["datetime"] = bar_datetime
         if self.rebalance.need_rebalance(self.current_holdings):
@@ -178,9 +178,10 @@ class Portfolio(object, metaclass=ABCMeta):
         from FillEvent
         """
         if event.type == "FILL":
+            log_message(f"Fill Event (before): {event.order_event.details()}")
             fill_dir = 1 if event.order_event.direction == OrderPosition.BUY else -1
             cash = fill_dir * event.order_event.trade_price * event.order_event.quantity * event.order_event.multiplier
-            self.current_holdings[event.order_event.symbol].update_avg_trade_price(
+            self.current_holdings[event.order_event.symbol].update_from_fill(
                 fill_dir * event.order_event.quantity, event.order_event.trade_price
             )
             self.current_holdings["commission"] += event.commission
