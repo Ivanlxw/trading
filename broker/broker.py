@@ -87,7 +87,7 @@ class SimulatedBroker(Broker):
 
     def _order_expired(self, latest_ohlc, order_event: OrderEvent):
         # check for expiry
-        return latest_ohlc["datetime"][-1] > order_event.expires
+        return latest_ohlc["datetime"] > order_event.expires
 
     def _filter_execute_order(self, latest_snapshot, order_event: OrderEvent) -> bool:
         if order_event.order_type == OrderType.LIMIT:
@@ -100,38 +100,44 @@ class SimulatedBroker(Broker):
                 "Expires": event.expires
             })
             """
+            low_price = latest_snapshot["low"]
+            high_price = latest_snapshot["high"]
             if (
-                order_event.signal_price > latest_snapshot["high"][-1] and order_event.direction == OrderPosition.BUY
+                order_event.direction == OrderPosition.SELL and order_event.signal_price > high_price
             ) or (
-                order_event.signal_price < latest_snapshot["low"][-1] and order_event.direction == OrderPosition.SELL
+                order_event.direction == OrderPosition.BUY and order_event.signal_price < low_price
             ):
                 return False
+            if order_event.direction == OrderPosition.BUY and order_event.signal_price > high_price:
+                order_event.signal_price = high_price
+            if order_event.direction == OrderPosition.SELL and order_event.signal_price < low_price:
+                order_event.signal_price = low_price
         return True
 
     def _put_fill_event(self, order_event: OrderEvent, event_queue):
         order_event.trade_price = order_event.signal_price
         fill_event = FillEvent(order_event, self.calculate_commission())
-        event_queue.appendleft(fill_event)
+        event_queue.append(fill_event)
         return True
 
     def execute_order(self, event: OrderEvent, event_queue, order_queue) -> bool:
         if event is None:
             return False
         if event.type == "ORDER" and self.check_gk(event):
-            latest_snapshot = self.bars.get_latest_bars(event.symbol)
+            latest_snapshot = self.bars.get_latest_bar(event.symbol)
             if event.order_type == OrderType.LIMIT:
                 if not self._order_expired(latest_snapshot, event):
                     if not event.processed:
                         event.processed = True
-                        event.date += datetime.timedelta(days=1)
                         order_queue.put(event)
                         return False
                     if self._filter_execute_order(latest_snapshot, event):
+                        event.date = latest_snapshot['datetime']
                         return self._put_fill_event(event, event_queue)
-                    event.date += datetime.timedelta(days=1)
                     order_queue.put(event)
             elif event.order_type == OrderType.MARKET:
-                event.trade_price = latest_snapshot["close"][-1]
+                event.signal_price = latest_snapshot["close"]
+                event.date = latest_snapshot['datetime']
                 return self._put_fill_event(event, event_queue)
             return False
         return False

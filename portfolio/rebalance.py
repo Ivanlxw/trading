@@ -143,7 +143,7 @@ class SellLosers(Rebalance, metaclass=ABCMeta):
 
     def rebalance(self, mkt_data, current_holdings, event_queue) -> None:
         symbol = mkt_data["symbol"]
-        latest_close_price = mkt_data["close"][-1]
+        latest_close_price = mkt_data["close"]
         if current_holdings[symbol].net_pos > 0 and latest_close_price < current_holdings[
             symbol
         ].average_trade_price * (1 - self.perc):
@@ -222,7 +222,7 @@ class SellWinners(metaclass=ABCMeta):
     def rebalance(self, mkt_data, current_holdings, event_queue) -> None:
         symbol = mkt_data["symbol"]
         # sell all losers
-        latest_close_price = mkt_data["close"][-1]
+        latest_close_price = mkt_data["close"]
         if current_holdings[symbol].net_pos > 0 and latest_close_price > current_holdings[
             symbol
         ].average_trade_price * (1 + self.perc):
@@ -287,7 +287,7 @@ class ExitShortMonthly(Rebalance):
     def rebalance(self, mkt_data, current_holdings, event_queue) -> None:
         symbol = mkt_data["symbol"]
         if current_holdings[symbol].net_pos < 0:
-            latest_close_price = mkt_data["close"][-1]
+            latest_close_price = mkt_data["close"]
             event_queue.appendleft(
                 OrderEvent(
                     symbol,

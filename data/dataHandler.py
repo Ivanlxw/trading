@@ -14,8 +14,8 @@ from backtest.utilities.option_info import (
     get_option_ticker_from_underlying,
 )  # not working on Windows
 
-from backtest.utilities.utils import get_datetime_from_ms, log_message
-from trading.utilities.utils import convert_ms_to_timestamp
+from backtest.utilities.utils import NY_TIMEZONE, get_datetime_from_ms, log_message
+from trading.utilities.utils import convert_ms_to_timestamp, is_option
 from trading.event import MarketEvent
 
 FREQUENCY_TYPES = ["1minute", "5minute", "15minute", "30minute", "60minute", "day"]
@@ -34,10 +34,12 @@ class DataHandler(ABC):
     - start_ms, end_ms: in millisecs
     """
 
-    def __init__(self, creds: dict, frequency_type, start_ms: int, end_ms: int):
+    def __init__(self, creds: dict, symbol_list, frequency_type, start_ms: int, end_ms: int):
         self.start_ms = start_ms
         self.end_ms = end_ms
         self.frequency_type = frequency_type
+        self.csv_base_dir = Path(os.environ["DATA_DIR"])
+        assert self.csv_base_dir.is_dir()
         # https://polygon.io/docs/stocks/get_v2_aggs_ticker__stocksticker__range__multiplier___timespan___from___to
         # self.data_fields = ['datetime', 'o', 'h', 'l', 'c', 'v', 'n', 'vw']
         self.data_fields = ["symbol", "datetime"] + list(OHLC_COLUMNS)
@@ -46,30 +48,56 @@ class DataHandler(ABC):
         self.fundamental_data = None  # depreciated but keep as might use fmp again
         self.option_metadata_info = None
 
-        self.symbol_data = []
-        self.symbol_list = None
+        self.symbol_data = []   # data queue
+        self.symbol_list = symbol_list
+        self.latest_symbol_data = dict((s, []) for s in self.symbol_list)   # data store, just latest
+
+    def _read_and_process_csv(self, s):
+        df = pd.read_csv(
+                os.path.join(
+                    self.csv_base_dir / self.frequency_type / ("options" if s.endswith("_options") else "equity"),
+                    f"{s}.csv",
+                ),
+                index_col=0,
+            )
+        return (s, df.drop_duplicates())
 
     def _to_generator(self):
+        self.symbol_data['symbol'] = self.symbol_data['symbol'].str.replace("O:", "")
         self.symbol_list = self.symbol_data.symbol.unique()
         self.symbol_data = self.symbol_data.reset_index().rename(dict(timestamp="datetime"), axis=1)
-        self.symbol_data['datetime'] = pd.to_datetime(self.symbol_data['datetime'], unit="ms")
-        log_message(f"Symbol data: {self.symbol_data.shape}")
-        self.symbol_data = iter(self.symbol_data.to_dict('records'))
+        self.symbol_data['datetime'] = (
+            pd.to_datetime(self.symbol_data['datetime'], unit="ms", utc=True).dt
+            .tz_convert(NY_TIMEZONE)
+        )
+        self.symbol_data = self.symbol_data.sort_values(['datetime', 'symbol'])
+        print(f"Symbol data: {self.symbol_data.shape}")
+        self.symbol_data = iter(self.symbol_data.loc[:, self.data_fields].to_dict('records'))
+    
+    def get_latest_bar(self, symbol):
+        return self.latest_symbol_data[symbol]
+        # if symbol in self.latest_symbol_data:
+        #     bar = dict((k, []) for k in self.data_fields)
+        #     for indi_bar_dict in self.latest_symbol_data[symbol][-N:]:
+        #         for k in indi_bar_dict.keys():
+        #             bar[k] += [indi_bar_dict[k]]
+        #     # convert to np.array
+        #     for k in bar.keys():
+        #         bar[k] = np.array(bar[k])
+        #     bar["symbol"] = symbol
+        #     return bar
+        # logging.error(f"Symbol ({symbol}) is not available in historical data set.")
+
+    @abstractmethod
+    def _adjust_ohlc_ts(self, mkt_data_df):
+        return
 
     @abstractmethod
     def _convert_raw_files(self):
         return
 
     @abstractmethod
-    def get_latest_bars(self, symbol, N=1):
-        """
-        Returns last N bars from latest_symbol list, or fewer if less
-        are available
-        """
-        raise NotImplementedError("Should implement get_latest_bars()")
-
-    @abstractmethod
-    def update_bars(self, event_queue):
+    def update_bars(self, event_queue, **kwargs):
         """
         Push latest bar to latest symbol structure for all symbols in list
         """
@@ -90,56 +118,34 @@ class HistoricCSVDataHandler(DataHandler):
         - a list of symbols determining universal stocks
         """
         assert frequency_type in FREQUENCY_TYPES
-        super().__init__(creds, frequency_type, start_ms, end_ms)
-        self.csv_dir = Path(os.environ["DATA_DIR"]) / self.frequency_type / "equity"
-        assert self.csv_dir.is_dir()
+        super().__init__(creds, symbol_list, frequency_type, start_ms, end_ms)
         self.frequency_type = frequency_type
 
-        self.symbol_list = symbol_list
         self._convert_raw_files()
         assert self.symbol_list is not None, "data and symbols should have been loaded"
-        self.latest_symbol_data = dict((s, []) for s in self.symbol_list)
         self.continue_backtest = True
+
+    def _adjust_ohlc_ts(self, mkt_data_df):
+        is_day = 'minute' not in self.frequency_type
+        freq = 1 if is_day else int(self.frequency_type.replace('minute', ''))
+        freq_ms = 8.64e+7 if is_day else 60000
+        mkt_data_df.index += freq * freq_ms
+        return mkt_data_df
 
     def _convert_raw_files(self):
         if sys.platform.startswith("win"):
-            dfs = [
-                (
-                    sym,
-                    pd.read_csv(
-                        os.path.join(self.csv_dir, f"{sym}.csv"),
-                        index_col=0,
-                    )
-                    .drop_duplicates()
-                    .sort_index()
-                    .loc[:, OHLC_COLUMNS],
-                )
-                for sym in self.symbol_list
-            ]
+            dfs = [self._read_and_process_csv(sym) for sym in self.symbol_list]
         else:
             with ProcessPool(8) as p:
-                dfs = p.map(
-                    lambda s: (
-                        s,
-                        pd.read_csv(
-                            os.path.join(self.csv_dir, f"{s}.csv"),
-                            index_col=0,
-                        )
-                        .drop_duplicates()
-                        .sort_index()
-                        .loc[:, OHLC_COLUMNS],
-                    ),
-                    self.symbol_list,
-                )
+                dfs = p.map(self._read_and_process_csv, self.symbol_list)
                 dfs = list(dfs)
-        dne = []
         for sym, temp_df in dfs:
-            temp_df = temp_df.query("timestamp >= @self.start_ms and timestamp <= @self.end_ms").copy()
-            if not temp_df.empty:
-                temp_df["symbol"] = sym
-                self.symbol_data.append(temp_df)
-        self.symbol_data = pd.concat(self.symbol_data).sort_index()
-        log_message(f"[_convert_raw_files] Excluded symbols: {dne}")
+            if temp_df.empty:
+                continue
+            filtered = temp_df.query("timestamp >= @self.start_ms and timestamp <= @self.end_ms").copy()
+            filtered['symbol'] = sym
+            self.symbol_data.append(filtered)
+        self.symbol_data = pd.concat(self.symbol_data)
         self._to_generator()
 
     def __copy__(self):
@@ -165,29 +171,16 @@ class HistoricCSVDataHandler(DataHandler):
                 "vwap": b[1][6],
             }
 
-    def get_latest_bars(self, symbol, N=1):
-        if symbol in self.latest_symbol_data:
-            bar = dict((k, []) for k in self.data_fields)
-            for indi_bar_dict in self.latest_symbol_data[symbol][-N:]:
-                for k in indi_bar_dict.keys():
-                    bar[k] += [indi_bar_dict[k]]
-            # convert to np.array
-            for k in bar.keys():
-                bar[k] = np.array(bar[k])
-            bar["symbol"] = symbol
-            return bar
-        logging.error(f"Symbol ({symbol}) is not available in historical data set.")
 
-    def update_bars(self, event_queue):
+    def update_bars(self, event_queue, _:bool=False):
         try:
             bar = next(self.symbol_data)
         except StopIteration:
             self.continue_backtest = False
         else:
             if bar is not None:
-                sym = bar['symbol']
-                self.latest_symbol_data[sym].append(bar)
-                event_queue.appendleft(MarketEvent(sym))
+                self.latest_symbol_data[bar["symbol"]] = bar
+                event_queue.appendleft(MarketEvent(bar))
 
 
 class OptionDataHandler(HistoricCSVDataHandler):
@@ -199,39 +192,27 @@ class OptionDataHandler(HistoricCSVDataHandler):
 
     def __init__(self, underlying_symbol_list, creds, start_ms: int, end_ms: int, frequency_type):
         start_dt, end_dt = get_datetime_from_ms([start_ms, end_ms if end_ms is not None else datetime.datetime.now()])
-        self.csv_base_dir = Path(os.environ["DATA_DIR"])
         self.options_symbol_list = list(get_option_ticker_from_underlying(underlying_symbol_list, start_dt, end_dt).keys())
         self.underlying_symbol_list = underlying_symbol_list
         super().__init__(underlying_symbol_list, creds, start_ms, end_ms, frequency_type)
 
         self.option_metadata_info = get_option_metadata_info(underlying_symbol_list, start_dt, end_dt)
         self.option_metadata_info = self.option_metadata_info.query("ticker in @self.options_symbol_list")
+        self.option_metadata_info['ticker'] = self.option_metadata_info['ticker'].str.replace("O:", "")
+        self.options_symbol_list = self.option_metadata_info['ticker'].unique()
         if self.option_metadata_info.empty or self.option_metadata_info is None:
             raise Exception(f"Invalid start & end date, data does not exist in disk: start={start_dt},end={end_dt}")
-
-    def _read_and_process_csv(self, s):
-        return (
-            pd.read_csv(
-                os.path.join(
-                    (self.csv_base_dir / f"{self.frequency_type}/options")
-                    if s.endswith("_options")
-                    else self.csv_base_dir / "day/equity",
-                    f"{s}.csv",
-                ),
-                index_col=0,
-            )
-            .drop_duplicates()
-            .sort_index()
-        )
+    
+    def _adjust_ohlc_ts(self, mkt_data_df):
+        is_day = 'minute' not in self.frequency_type    # or not is_option(mkt_data_df.symbol.iloc[0])
+        freq = 1 if is_day else int(self.frequency_type.replace('minute', ''))
+        freq_ms = 8.64e+7 if is_day else 60000
+        mkt_data_df.index += freq * freq_ms
+        return mkt_data_df
 
     def _convert_raw_files(self):
         symbol_list_to_read = self.underlying_symbol_list + [f"{sym}_options" for sym in self.underlying_symbol_list]
-        # if sys.platform.startswith("win"):
-        #     dfs = [(sym, self._read_and_process_csv(sym)) for sym in symbol_list_to_read]
-        # else:
-        #     with ProcessPool(8) as p:
-        #         dfs = p.map(lambda s: (s, self._read_and_process_csv(s)), symbol_list_to_read)
-        dfs = [(sym, self._read_and_process_csv(sym)) for sym in symbol_list_to_read]
+        dfs = [self._read_and_process_csv(sym) for sym in symbol_list_to_read]
         for sym, temp_df in dfs:
             if sym.endswith("_options"):
                 filtered = temp_df.query(
@@ -239,14 +220,13 @@ class OptionDataHandler(HistoricCSVDataHandler):
                 )
                 if filtered.empty:
                     continue
-                filtered = filtered.loc[:, OHLC_COLUMNS + ['symbol']]
             else:  # equity
-                filtered = temp_df.loc[:, OHLC_COLUMNS].query("timestamp >= @self.start_ms and timestamp <= @self.end_ms")
+                filtered = temp_df.query("timestamp >= @self.start_ms and timestamp <= @self.end_ms").copy()
                 if filtered.empty:
                     continue
                 filtered["symbol"] = sym 
-            self.symbol_data.append(filtered)
-        self.symbol_data = pd.concat(self.symbol_data).sort_index()
+            self.symbol_data.append(self._adjust_ohlc_ts(filtered))
+        self.symbol_data = pd.concat(self.symbol_data)
         self._to_generator()
 
     def get_option_symbol(self, underlying, expiration_date, contract_type, strike):
@@ -295,7 +275,7 @@ class DataFromDisk(HistoricCSVDataHandler):
                 (
                     sym,
                     pd.read_csv(
-                        os.path.join(self.csv_dir / f"{sym}.csv"),
+                        os.path.join(self.csv_base_dir / f"{sym}.csv"),
                         index_col=0,
                     )
                     .drop_duplicates()
@@ -311,7 +291,7 @@ class DataFromDisk(HistoricCSVDataHandler):
                     lambda s: (
                         s,
                         pd.read_csv(
-                            os.path.join(self.csv_dir / f"{s}.csv"),
+                            os.path.join(self.csv_base_dir / f"{s}.csv"),
                             index_col=0,
                         )
                         .drop_duplicates()
@@ -339,10 +319,13 @@ class DataFromDisk(HistoricCSVDataHandler):
             self.symbol_data[sym]["datetime"] = self.symbol_data[sym].index.values
             self.latest_symbol_data[sym] = self.symbol_data[sym].loc[:, self.data_fields[1:]].to_dict("records")
 
-    def update_bars(self, event_queue, live: bool):
+    def update_bars(self, event_queue, **kwargs):
+        live = kwargs.get('live', False)
         if not live:
             super().update_bars(event_queue)
             return
         log_message("reading prices from disk")
         self._set_symbol_data()
-        event_queue.appendleft(MarketEvent())
+        for sym in self.symbol_data:
+            bars = self.get_latest_bar(sym)
+            event_queue.appendleft(MarketEvent(bars))

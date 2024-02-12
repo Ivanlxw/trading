@@ -14,10 +14,10 @@ from trading.portfolio.instrument import (
     Instrument,
     Option
 )
-from trading.utilities.utils import bar_is_valid, convert_ms_to_timestamp, is_option
+from trading.utilities.utils import NY_TIMEZONE, bar_is_valid, convert_ms_to_timestamp, is_option
 
 from trading.event import FillEvent, OrderEvent, SignalEvent
-from trading.portfolio.rebalance import Rebalance
+from trading.portfolio.rebalance import NoRebalance, Rebalance
 from trading.utilities.enum import OrderPosition, OrderType
 
 ABSOLUTE_BT_DATA_DIR = Path(os.environ["DATA_DIR"])
@@ -49,7 +49,7 @@ class Portfolio(object, metaclass=ABCMeta):
 
     def Initialize(self, symbol_list, start_ms, metadata_info):
         self.symbol_list = symbol_list
-        self.start_ts = pd.Timestamp(start_ms, unit="ms")
+        self.start_ts = pd.Timestamp(start_ms, unit="ms", tz=NY_TIMEZONE)
 
         # checks if a saved current_holdings is alr present and if present,
         # load it. Otherwise construct
@@ -58,6 +58,17 @@ class Portfolio(object, metaclass=ABCMeta):
             self._setup_holdings_from_json(ABSOLUTE_BT_DATA_DIR / f"portfolio/cur_holdings/{self.portfolio_name}.json")
         assert isinstance(self.current_holdings, dict)
         self.all_holdings = self.construct_all_holdings()
+    
+    def set_keep_historical_data_period(self, N: int):
+        for k, ctx in self.current_holdings.items():
+            if k in self.symbol_list:
+                ctx.KEEP_LAST_N_DAYS = N
+
+    def get_historical_data_for_sym(self, sym):
+        return self.current_holdings[sym].historical_market_data
+
+    def get_historical_fair_for_sym(self, sym):
+        return self.current_holdings[sym].historical_fair_px
 
     def _generate_inst_port_context(self, s, metadata_info) -> Instrument:
         if is_option(s):
@@ -92,7 +103,7 @@ class Portfolio(object, metaclass=ABCMeta):
         for s in self.symbol_list:
             context = self._generate_inst_port_context(s, metadata_info)
             if context is None:
-                print(f"No metadata info for {s}")
+                log_message(f"No metadata info for {s}")
                 options_without_metadata_info.append(s)
                 continue
             d[s] = context
@@ -134,9 +145,9 @@ class Portfolio(object, metaclass=ABCMeta):
 
     def update_timeindex(self, symbol_bar, event_queue) -> bool:
         symbol = symbol_bar['symbol']
-        if (not bar_is_valid(symbol_bar)) or symbol_bar["datetime"][-1] < self.current_holdings["datetime"]:
+        if (not bar_is_valid(symbol_bar)) or symbol_bar["datetime"] < self.current_holdings["datetime"]:
             return False
-        bar_datetime = symbol_bar["datetime"][-1]
+        bar_datetime = symbol_bar["datetime"]
         if bar_datetime > self.current_holdings["datetime"]:
             # update holdings based off last trading day
             dh = dict((s, self.current_holdings[s].get_value()) for s in self.symbol_list)
@@ -144,35 +155,33 @@ class Portfolio(object, metaclass=ABCMeta):
             dh["cash"] = self.current_holdings["cash"]
             dh["commission"] = self.current_holdings["commission"]
             dh["total"] = dh["cash"] + sum(dh[s] for s in self.symbol_list)
-            log_message(dh)
             self.all_holdings.append(dh)
             self.current_holdings["total"] = dh["total"]
             self.current_holdings["commission"] = 0.0  # reset commission for the day
         self.current_holdings[symbol].update(symbol_bar)
         self.current_holdings["datetime"] = bar_datetime
-        if self.rebalance.need_rebalance(self.current_holdings):
+        if self.rebalance is not None and self.rebalance.need_rebalance(self.current_holdings):
             for symbol in self.symbol_list:
                 self.rebalance.rebalance(symbol_bar, self.current_holdings, event_queue)
         return True
 
     def update_option_datetime(self, symbol_bar, event_queue) -> bool:
         # checks for expiry and account for pnl/assignment
-        symbol = symbol_bar['symbol']        
-        if not is_option(symbol):
-            return True
-        elif symbol not in self.current_holdings:
+        symbol = symbol_bar['symbol']
+        if symbol not in self.current_holdings:
             return False
-        eto_inst_ctx = self.current_holdings[symbol]
-        assert isinstance(eto_inst_ctx, Option), f"{symbol} in current_holdings has to be Option"
-        eto_inst_ctx.update_with_underlying(symbol_bar, event_queue)
+        if not is_option(symbol):
+            for inst_ctx in self.current_holdings.values():
+                if isinstance(inst_ctx, Option) and inst_ctx.underlying_symbol == symbol:
+                    inst_ctx.update_with_underlying(symbol_bar, event_queue)
         return True
 
     def update_signal(self, event: SignalEvent, event_queue):
         order = self.generate_order(event)  # list of OrderEvent
         if order is not None:
-            if self.order_type == OrderType.LIMIT:
+            if order.order_type == OrderType.LIMIT:
                 order.expires = order.date + timedelta(days=self.expires)
-            event_queue.appendleft(order)
+            event_queue.append(order)
 
     def update_fill(self, event: FillEvent, live: bool):
         """
@@ -215,7 +224,7 @@ class Portfolio(object, metaclass=ABCMeta):
         self.equity_curve = curve.dropna()
 
     def output_summary_stats(self):
-        total_return = self.equity_curve["equity_curve"][-1]
+        total_return = self.equity_curve["equity_curve"].iloc[-1]
         returns = self.equity_curve["equity_returns"]
         pnl = self.equity_curve["equity_curve"]
 
@@ -313,10 +322,13 @@ class FixedTradeValuePortfolio(Portfolio):
     def generate_order(self, signal: SignalEvent) -> OrderEvent:
         if signal.price == 0:
             return
+        qty = signal.quantity if signal.quantity is not None else min(self.trade_value // signal.price, self.max_qty)
+        if not qty > 0:
+            return
         return OrderEvent(
             signal.symbol,
             signal.datetime,
-            signal.quantity if signal.quantity is not None else min(self.trade_value // signal.price, self.max_qty),
+            qty,
             signal.order_position,
             signal.order_type if signal.order_type is not None else self.order_type,
             signal.price

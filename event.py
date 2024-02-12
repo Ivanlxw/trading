@@ -23,9 +23,10 @@ class MarketEvent(Event):
     The event object simply contains an identification that it is a market event
     """
 
-    def __init__(self, symbol):
+    def __init__(self, data: dict):
         self.type = "MARKET"
-        self.symbol = symbol
+        self.symbol = data["symbol"]
+        self.data = data 
 
 
 class SignalEvent(Event):
@@ -72,7 +73,7 @@ class OrderEvent(Event):
         direction - BUY or SELL for long or short
         """
 
-        assert quantity > 0
+        assert quantity > 0, f"quantity={quantity}"
         if not (direction == OrderPosition.BUY or direction == OrderPosition.SELL):
             raise AssertionError(f"Direction is not BUY or SELL: {direction}")
         self.type = "ORDER"

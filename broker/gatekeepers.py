@@ -155,10 +155,7 @@ class MaxPortfolioPercPerInst(GateKeeper):
         self.position_percentage = position_percentage
 
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
-        symbol_close_px = self.bars.get_latest_bars(order_event.symbol)["close"]
-        if len(symbol_close_px) < 1:
-            return False
-        symbol_close_px = symbol_close_px[0]
+        symbol_close_px = self.bars.get_latest_bar(order_event.symbol)["close"]
         is_within_max_value_per_inst: bool = (
             abs(current_holdings[order_event.symbol].net_pos + order_event.quantity)
             <= (current_holdings["total"] * self.position_percentage) // symbol_close_px
