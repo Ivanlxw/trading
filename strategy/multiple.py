@@ -2,7 +2,7 @@ from abc import ABC
 from typing import List
 import copy
 
-from trading.event import MarketEvent, SignalEvent
+from trading.event import SignalEvent
 from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 

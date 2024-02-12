@@ -3,6 +3,7 @@ import datetime
 import os
 from pathlib import Path
 import random
+from sqlalchemy import create_engine
 
 import numpy as np
 import polars as pl
@@ -16,10 +17,12 @@ from backtest.utilities.utils import (
     read_universe_list,
 )
 from Data.get_data import get_option_ticker_from_underlying
+from trading.utilities.utils import DATA_DIR
 
-DATA_DIR = Path(os.environ["DATA_DIR"])
 TTM_UNIT = 3.6e6  # hour in ms
 NUMERICAL_VARIABLES = ["open", "high", "low", "close", "volume", "vwap", "num_trades"]
+conn = create_engine(os.environ["DB_URL"].replace('\\', '')).connect()
+equity_metadata_df =  pl.read_database("select * from backtest.equity_metadata", connection=conn)
 
 
 def fit_randomized_search_model(model, params, X, y, n_iter=10):
@@ -106,50 +109,50 @@ def get_deviation_df(df, t):
 
 def _get_raw_symbol_data(symbol, frequency):
     assert frequency != "day", "Not meant to work with day data"
+    sic_code = equity_metadata_df.filter(
+        pl.col("ticker") == symbol 
+    )["sic_code"]
+    if len(sic_code) == 0:
+        print(f"Skipping {symbol} as there is no sic code")
+        return
+    sic_code = sic_code[0]
+
     ohlc_day = read_df(DATA_DIR / f"day/equity/{symbol}.csv")
     ohlc_hour = read_df(DATA_DIR / f"{frequency}/equity/{symbol}.csv")
-
+    
     data_from = ohlc_hour["timestamp"].min()
     data_to = ohlc_hour["timestamp"].max()
     ticker_expiry_map = get_option_ticker_from_underlying(
-        ["SPY"],
-        datetime.datetime.fromtimestamp(data_from / 1000),
-        datetime.datetime.fromtimestamp(data_to / 1000),
+        [symbol], 
+        datetime.datetime.fromtimestamp(data_from / 1000), 
+        datetime.datetime.fromtimestamp(data_to / 1000)
     )
-    expiries = set(get_ms_from_datetime(v) for v in ticker_expiry_map.values())
-    merged_df = ohlc_hour.sort("timestamp").join_asof(
-        pl.DataFrame({"expiry_ts": sorted(expiries)}).sort("expiry_ts"),
-        left_on="timestamp",
-        right_on="expiry_ts",
-        strategy="forward",
-    )
-    merged_df = (
-        merged_df.with_columns(
-            pl.from_epoch(pl.col("expiry_ts"), time_unit="ms").alias("expiry_dt")
-        )
-        .filter(pl.all_horizontal(pl.all().is_not_null()))
-        .sort("expiry_ts")
-    )
+    expiries = set(int(get_ms_from_datetime(v)) for v in ticker_expiry_map.values())
 
-    expiry_df = (
-        merged_df.join_asof(
-            ohlc_day[["timestamp", "low", "high"]]
-            .rename(dict(high="expiry_high", low="expiry_low", timestamp="expiry_ts"))
-            .sort("expiry_ts"),
-            on="expiry_ts",
-            strategy="forward",
-        )
-        .with_columns(
-            ((pl.col("expiry_ts") - pl.col("timestamp")) / TTM_UNIT).alias("ttm")
-        )
-        .filter(pl.col("expiry_ts").is_not_nan())
-        .with_columns(
-            ((pl.col("expiry_low") / pl.col("close")) - 1).alias("expiry_low"),
-            ((pl.col("expiry_high") / pl.col("close")) - 1).alias("expiry_high"),
-        )
-    )
-    expiry_df = expiry_df.with_columns(pl.col(NUMERICAL_VARIABLES).pct_change()).filter(
+    merged_df = ohlc_hour.sort('timestamp').join_asof(
+        pl.DataFrame({"expiry_ts": sorted(expiries)}).sort("expiry_ts"),
+        left_on='timestamp', right_on='expiry_ts',
+        strategy='forward'
+    ) 
+    merged_df = merged_df.with_columns(
+        expiry_dt=pl.from_epoch(pl.col("expiry_ts"), time_unit="ms"),
+        sic_code=pl.lit(sic_code if sic_code else "9")
+    ).filter(
         pl.all_horizontal(pl.all().is_not_null())
+    ).sort("expiry_ts")
+
+    expiry_df = merged_df.join_asof(
+        ohlc_day[["timestamp", "low", "high"]].rename(dict(
+            high="expiry_high",
+            low="expiry_low",
+            timestamp="expiry_ts"
+        )).sort("expiry_ts"),
+        on='expiry_ts',
+        strategy='forward'
+    ).with_columns(
+        ((pl.col("expiry_ts") - pl.col("timestamp")) / TTM_UNIT).alias("ttm")
+    ).filter(
+        pl.col("expiry_ts").is_not_nan()
     )
     return expiry_df
 
@@ -159,22 +162,30 @@ def load_data(symbols: list, frequencies: list):
     for freq in frequencies:
         for symbol in symbols:
             expiry_df = _get_raw_symbol_data(symbol, freq)
-            lagged_df = lag_features(
-                expiry_df, [i for i in range(1, 6)], subset=NUMERICAL_VARIABLES
-            )
-            expiry_df = pl.concat(
-                [
-                    lagged_df,
-                    get_deviation_df(expiry_df, 9),
-                    get_deviation_df(expiry_df, 20),
-                    expiry_df[["timestamp", "ttm", "expiry_low", "expiry_high"]],
-                ],
-                how="horizontal",
-            )
-            # expiry_df.dropna(inplace=True)
+            if expiry_df is None:
+                continue
+            original_cols = [c for c in expiry_df.columns if c not in [
+                "timestamp", "ttm", "sic_code", "expiry_low", "expiry_high"]]
+            lagged_df = lag_features(expiry_df, [1,2,3,5,7,11,19], subset = NUMERICAL_VARIABLES)
+            expiry_df = pl.concat([
+                lagged_df,
+                get_deviation_df(expiry_df, 9),
+                get_deviation_df(expiry_df, 20),
+                expiry_df   # [["timestamp", "ttm", "expiry_low", "expiry_high"]]
+            ], how="horizontal")
             expiry_df = expiry_df.filter(pl.all_horizontal(pl.all().is_not_null()))
             df_list.append(expiry_df)
-    return pl.concat(df_list)
+    df = pl.concat(df_list)
+    ohlc_cols = [col for col in df.columns if any(c in col for c in ["open", "high", "low", "close", "vwap"])]
+    vol_cols = [col for col in df.columns if "volume" in col]
+    num_trade_cols = [col for col in df.columns if "num_trades" in col]
+    df = df.with_columns(
+        pl.col("sic_code").cast(pl.Categorical),
+        pl.col(ohlc_cols).truediv(pl.col("close")).sub(1),
+        pl.col(vol_cols).truediv(pl.col("volume")).sub(1),
+        pl.col(num_trade_cols).truediv(pl.col("num_trades")).sub(1),
+    ).drop(original_cols)
+    return df
 
 
 def train_sklearn_model(train_df):
@@ -236,7 +247,7 @@ def train_sklearn_model(train_df):
     dump(high_model, DATA_DIR / "models/option_short_strangle_high_model.joblib")
 
 
-def train_lightgbm_model(train_df, valid_df):
+def train_lightgbm_model(train_df, test_df):
     import lightgbm as lgb
 
     params = {
@@ -262,6 +273,10 @@ def train_lightgbm_model(train_df, valid_df):
         "reg_alpha": uniform(0.01, 0.9),
         "reg_lambda": uniform(0.01, 0.5),
     }
+    split_idx = int(len(train_df) * 0.96)
+    valid_df = train_df.tail(-split_idx)    
+    train_df = train_df.head(split_idx)
+
     bst_low = lgb.LGBMRegressor(**params, n_jobs=4)
     m_low = fit_randomized_search_model(
         bst_low,
@@ -312,20 +327,20 @@ def train_lightgbm_model(train_df, valid_df):
 
     from sklearn.metrics import mean_squared_error, r2_score
 
-    valid_lows = bst_low.predict(valid_df[FEATURES])
-    valid_highs = bst_high.predict(valid_df[FEATURES])
+    test_lows = bst_low.predict(test_df[FEATURES])
+    test_highs = bst_high.predict(test_df[FEATURES])
     print("low")
     print(
         dict(
-            rmse=np.sqrt(mean_squared_error(valid_df["expiry_low"], valid_lows)),
-            r2=r2_score(valid_df["expiry_low"], valid_lows),
+            rmse=np.sqrt(mean_squared_error(test_df["expiry_low"], test_lows)),
+            r2=r2_score(test_df["expiry_low"], test_lows),
         )
     )
     print("high")
     print(
         dict(
-            rmse=np.sqrt(mean_squared_error(valid_df["expiry_high"], valid_highs)),
-            r2=r2_score(valid_df["expiry_high"], valid_highs),
+            rmse=np.sqrt(mean_squared_error(test_df["expiry_high"], test_highs)),
+            r2=r2_score(test_df["expiry_high"], test_highs),
         )
     )
 
@@ -347,40 +362,39 @@ def parse_args():
     parser.add_argument(
         "--universe",
         type=Path,
-        required=False,
+        required=True,
         help="File path to trading universe",
         nargs="+",
     )
     parser.add_argument(
         "--frequency",
         type=str,
-        default="day",
+        required=True,
         nargs="+",
         help="Frequency of data. Searches a dir with same name",
     )
     return parser.parse_args()
 
 
-NUM_SYMBOLS_IN_DATA = 75
+NUM_SYMBOLS_IN_DATA = 10
 if __name__ == "__main__":
     args = parse_args()
     creds = load_credentials(args.credentials)
 
-    universe = [DATA_DIR / "universe/snp500.txt"]
-    symbols = read_universe_list(universe)
+    symbols = read_universe_list(args.universe)
     expiry_df = load_data(
         random.sample(symbols, NUM_SYMBOLS_IN_DATA) + ["DIA", "SPY", "QQQ"],
         args.frequency,
     )
     expiry_df = expiry_df.filter(pl.col("ttm") < 250)
-    expiry_df = expiry_df.sort("timestamp").drop("timestamp")
-    print(expiry_df.shape)
+    expiry_df = expiry_df.sort("timestamp").drop("timestamp").to_pandas()
 
     # remove  ["expiry_low", "expiry_high"]
-    FEATURES = list(expiry_df.columns)[:-2]
+    FEATURES = [c for c in expiry_df.columns if c not in ["expiry_low", "expiry_high"]]
     split_idx = int(len(expiry_df) * 0.95)
     train_df = expiry_df.head(split_idx)
-    valid_df = expiry_df.tail(-split_idx)
+    test_df = expiry_df.tail(-split_idx)
+    print(train_df.tail())
 
-    print(train_df.shape, valid_df.shape)
-    train_lightgbm_model(train_df, valid_df)
+    print("Train-test split: ", train_df.shape, test_df.shape)
+    # train_lightgbm_model(train_df, test_df)

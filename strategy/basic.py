@@ -1,7 +1,8 @@
 from typing import List
+from trading.portfolio.instrument import Instrument
 from trading.utilities.enum import OrderPosition
 from trading.strategy.base import Strategy
-from trading.event import SignalEvent
+from trading.event import MarketEvent, SignalEvent
 
 
 class OneSidedOrderOnly(Strategy):
@@ -73,17 +74,16 @@ class BuyAndHoldStrategy(Strategy):
         self._initialize_bought_status()
         self.period = 1
 
-    def _initialize_bought_status(
-        self,
-    ):
+    def _initialize_bought_status(self):
         self.bought = {}
         for s in self.bars.symbol_list:
             self.bought[s] = False
 
-    def _calculate_signal(self, bars) -> List[SignalEvent]:
-        symbol = bars["symbol"]
+    def _calculate_signal(self, event: MarketEvent, inst: Instrument) -> List[SignalEvent]:
+        symbol = inst.symbol
+        bars = event.data
         if not self.bought[symbol]:
             # there's an entry
-            if bars is not None and len(bars["datetime"]) > 0:
+            if bars is not None and "datetime" in bars and bars["datetime"] is not None:
                 self.bought[symbol] = True
-                return [SignalEvent(symbol, bars["datetime"][-1], OrderPosition.BUY, bars["close"][-1])]
+                return [SignalEvent(symbol, bars["datetime"], OrderPosition.BUY, bars["close"])]

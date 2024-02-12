@@ -5,6 +5,7 @@ from typing import Optional
 import talib
 import numpy as np
 import pandas as pd
+import polars as pl
 import scipy.stats as stats
 
 from trading.utilities.utils import daily_date_range
@@ -12,6 +13,64 @@ from trading.data.dataHandler import DataHandler
 from trading.strategy.statmodels.targets import _ema
 
 FUNDAMENTAL_DIR = Path(os.environ["DATA_DIR"]) / "fundamental/quarterly"
+
+
+def lag_features_pl(df, window, subset=None, inference=False):
+    # Note: NaNs are included as well
+    cols_to_apply = subset if subset is not None else df.columns
+
+    def get_shift(n):
+        shifted_df = pl.DataFrame([df[col].shift(n - 1 if inference else n) for col in cols_to_apply])
+        shifted_df.columns = [f"{col}_lag_{n}" for col in cols_to_apply]
+        return shifted_df
+
+    window_type = type(window)
+    if window_type == int:
+        return get_shift(window)
+    elif window_type == list:
+        shifted_df = pl.concat([get_shift(lag_idx) for lag_idx in window], how="horizontal")
+        return shifted_df
+    raise Exception("window arg is of unknown type")
+
+def lag_features(df, window, subset=None, inference=False):
+    cols_to_apply = subset if subset is not None else df.columns
+
+    def get_shift(n):
+        shifted_df = pd.concat([df[col].shift(n - 1 if inference else n) for col in cols_to_apply], axis=1)
+        shifted_df.columns = [f"{col}_lag_{n}" for col in cols_to_apply]
+        return shifted_df
+
+    window_type = type(window)
+    if window_type == int:
+        return get_shift(window)
+    elif window_type == list:
+        shifted_df = pd.concat([get_shift(lag_idx) for lag_idx in window], axis=1)
+        return shifted_df
+    raise Exception("window arg is of unknown type")
+
+def rolling_cols(df, window, aggregation_fn, subset=None, inference=False):
+    aggregation_fn_name = aggregation_fn.__name__
+    cols_to_apply = subset if subset is not None else df.columns
+    return pd.concat(
+        [
+            df[col]
+            .rolling(window, min_periods=1, closed='both' if inference else 'left')
+            .apply(aggregation_fn)
+            .rename(f"rolling_{aggregation_fn_name}{window}_{col}")
+            for col in cols_to_apply
+        ],
+        axis=1,
+    )
+
+def average_deviation(df, window, subset=None, keep_average=True, inference=False):
+    pattern = f"rolling_average{window}_"
+    averaged_df = rolling_cols(df, window, np.average, subset, inference)
+    deviation = []
+    for col_name in averaged_df:
+        deviation.append(
+            (df[col_name.replace(pattern, "")] - averaged_df[col_name]).rename(f"deviation_{window}_{col_name}")
+        )
+    return pd.concat(deviation if not keep_average else [averaged_df] + deviation, axis=1)
 
 
 class Features(ABC):

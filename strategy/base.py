@@ -8,8 +8,9 @@ from typing import List
 
 import numpy as np
 
-from trading.event import SignalEvent
+from trading.event import MarketEvent, SignalEvent
 from trading.data.dataHandler import DataHandler
+from trading.portfolio.instrument import Instrument
 
 
 class Strategy(object, metaclass=ABCMeta):
@@ -23,7 +24,8 @@ class Strategy(object, metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def __init__(self, bars: DataHandler, description: str = ""):
+    # TODO: make it required to add as argument
+    def __init__(self, bars: DataHandler, lookback: int = 100_000, description: str = ""):
         """
         Args:
         bars - DataHandler object that provides bar info
@@ -31,29 +33,25 @@ class Strategy(object, metaclass=ABCMeta):
         """
         self.bars: DataHandler = bars
         self.description = description
-        self.period = None
+        self.period: int = -1 
+        self.lookback: int = lookback
 
-    def calculate_signals(self, event, **kwargs) -> List[SignalEvent]:
+    def calculate_signals(self, event: MarketEvent, inst: Instrument, **kwargs) -> List[SignalEvent]:
         """_          Returns list(SignalEvents)"""
+        signals = []
         if event.type == "MARKET":
-            bars = self.get_bars(event.symbol)
-            if bars is None or np.isnan(bars["open"][-1]) or np.isnan(bars["close"][-1]):
-                return []
-            signals = []
-            sig = self._calculate_signal(bars)
+            sig = self._calculate_signal(event, inst)
             signals += (sig if sig is not None else [])
         return signals
 
     @abstractmethod
-    def _calculate_signal(self, bars) -> List[SignalEvent]:
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> List[float]:
         raise NotImplementedError("Need to implement underlying strategy logic:")
 
-    def get_bars(self, ticker):
-        bars_list = self.bars.get_latest_bars(ticker, N=self.period)
-        if bars_list is None or len(bars_list["datetime"]) != self.period:
-            return
-        return bars_list
+    @abstractmethod
+    def _calculate_signal(self, event: MarketEvent, inst: Instrument) -> List[SignalEvent]:
+        raise NotImplementedError("Need to implement underlying strategy logic:")
 
-    def describe(self):
+    def describe(self): 
         """Return all variables minus bars and events"""
         return {f"{self.__class__.__name__}": str(self.__dict__)}
