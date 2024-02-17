@@ -4,7 +4,7 @@ Strategy object take market data as input and produce trading signal events as o
 
 from abc import ABCMeta, abstractmethod
 
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 
@@ -24,32 +24,42 @@ class Strategy(object, metaclass=ABCMeta):
     """
 
     @abstractmethod
-    # TODO: make it required to add as argument
-    def __init__(self, bars: DataHandler, lookback: int = 100_000, description: str = ""):
+    def __init__(self, lookback: int = 100_000, description: str = ""):
         """
         Args:
         bars - DataHandler object that provides bar info
         events - event queue object
         """
-        self.bars: DataHandler = bars
         self.description = description
         self.period: int = -1 
         self.lookback: int = lookback
 
     def calculate_signals(self, event: MarketEvent, inst: Instrument, **kwargs) -> List[SignalEvent]:
-        """_          Returns list(SignalEvents)"""
+        """_Returns list(SignalEvents)"""
         signals = []
         if event.type == "MARKET":
-            sig = self._calculate_signal(event, inst)
-            signals += (sig if sig is not None else [])
+            bars = event.data
+            if bars is None or "open" not in bars or "close" not in bars:
+                return []
+            fair_min, fair_max = self._calculate_fair(event, inst)
+            inst.update_fair({
+                "datetime": bars["datetime"],
+                # Because targets are log(pct_change)
+                "fair_min": fair_min,
+                "fair_max": fair_max,
+            })
+            sig = self._calculate_signal(bars, fair_min, fair_max)
+            signals += sig if sig is not None else []
         return signals
 
     @abstractmethod
-    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> List[float]:
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
+        ''' fair px calculation logic '''
         raise NotImplementedError("Need to implement underlying strategy logic:")
 
     @abstractmethod
-    def _calculate_signal(self, event: MarketEvent, inst: Instrument) -> List[SignalEvent]:
+    def _calculate_signal(self, mkt_data, price_move_perc_min, price_move_perc_max, **kwargs) -> List[SignalEvent]:
+        ''' Rule to convert fair price range -> signal'''
         raise NotImplementedError("Need to implement underlying strategy logic:")
 
     def describe(self): 

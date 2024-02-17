@@ -208,7 +208,7 @@ class MLRangePrediction(Strategy, abc.ABC):
         Model requires the following guidelines:
         - needs a .predict() method which is able to take in np ndarrays
         """
-        super().__init__(None, lookback, description)
+        super().__init__(lookback, description)
         jl_extension = "joblib"
         lgb_extension = "lgb"
         if lgb_extension in model_min_fp.name and lgb_extension in model_max_fp.name:
@@ -227,8 +227,7 @@ class MLRangePrediction(Strategy, abc.ABC):
         """raw data : ohlcv"""
         return inst.historical_market_data
 
-    @abc.abstractmethod
-    def _calculate_signal(self, event: MarketEvent, inst: Instrument, **kwargs) -> Tuple[float, float]:
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument, **kwargs) -> Tuple[float]:
         # returns predicted min, max perc change
         assert isinstance(event, MarketEvent), "event does not contain market data"
         data_for_pred = self._preprocess_mkt_data(inst)
@@ -301,9 +300,6 @@ class EquityPrediction(MLRangePrediction):
         df_cols = [c for c in df.columns if c not in self.DROP_COLS]
         return df.sort("datetime")[df_cols]
     
-    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> List[SignalEvent]:
-        return super()._calculate_signal(event, inst)
-
     def _calculate_signal(self, mkt_data, price_move_perc_min, price_move_perc_max, **kwargs) -> List[SignalEvent]:
         # event: MarketEvent, inst: Instrument
         # rule is based on research result  & distribution of predictions
