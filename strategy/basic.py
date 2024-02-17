@@ -1,4 +1,6 @@
-from typing import List
+from typing import List, Tuple
+import numpy as np
+
 from trading.portfolio.instrument import Instrument
 from trading.utilities.enum import OrderPosition
 from trading.strategy.base import Strategy
@@ -64,26 +66,25 @@ class BuyAndHoldStrategy(Strategy):
     A benchmark to compare other strategies
     """
 
-    def __init__(self, bars):
+    def __init__(self):
         """
         Args:
         bars - DataHandler object that provides bar info
         events - event queue object
         """
-        super().__init__(bars)
-        self._initialize_bought_status()
+        super().__init__()
         self.period = 1
-
-    def _initialize_bought_status(self):
         self.bought = {}
-        for s in self.bars.symbol_list:
-            self.bought[s] = False
 
-    def _calculate_signal(self, event: MarketEvent, inst: Instrument) -> List[SignalEvent]:
-        symbol = inst.symbol
-        bars = event.data
-        if not self.bought[symbol]:
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
+        ''' fair px calculation logic '''
+        return (np.nan, np.nan)
+
+    # def _calculate_signal(self, event: MarketEvent, inst: Instrument) -> List[SignalEvent]:
+    def _calculate_signal(self, mkt_data, price_move_perc_min, price_move_perc_max, **kwargs) -> List[SignalEvent]:
+        symbol = mkt_data["symbol"]
+        if symbol not in self.bought:
             # there's an entry
-            if bars is not None and "datetime" in bars and bars["datetime"] is not None:
+            if mkt_data is not None and "datetime" in mkt_data and mkt_data["datetime"] is not None:
                 self.bought[symbol] = True
-                return [SignalEvent(symbol, bars["datetime"], OrderPosition.BUY, bars["close"])]
+                return [SignalEvent(symbol, mkt_data["datetime"], OrderPosition.BUY, mkt_data["close"])]

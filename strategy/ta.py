@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 import talib
 import numpy as np
 from numba import njit
-from trading.event import SignalEvent
+from trading.event import MarketEvent, SignalEvent
+from trading.portfolio.instrument import Instrument
 from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 
@@ -13,27 +14,33 @@ class SimpleTACross(Strategy):
     Buy/Sell when it crosses the smoothed line (SMA, etc.)
     """
 
-    def __init__(self, bars, events, timeperiod: int, ma_type, description="TACross"):
-        super().__init__(bars, events, description + f": timeperiod={timeperiod}")
-        self.symbol_list = self.bars.symbol_list
+    def __init__(self, timeperiod: int, ma_type, range_multiplier=1.0, description="TACross"):
+        super().__init__(lookback=timeperiod * 2, description=description + f": timeperiod={timeperiod}")
         self.timeperiod = timeperiod
         self.ma_type = ma_type
+        self.std_multiplier = range_multiplier
 
-    def _break_up(self, bars: list, TAs: list) -> bool:
-        return bars[-2] < TAs[-2] and bars[-1] > TAs[-1]
+    def _break_up(self, prev_px, curr_px, fair) -> bool:
+        return prev_px <= fair < curr_px
 
-    def _break_down(self, bars: list, TAs: list) -> bool:
-        return bars[-2] > TAs[-2] and bars[-1] < TAs[-1]
+    def _break_down(self, prev_px, curr_px, fair) -> bool:
+        return curr_px <= fair < prev_px
+    
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
+        TAs = self.ma_type(inst.historical_market_data, self.timeperiod)
+        if len(TAs) < self.timeperiod:
+            return np.nan, np.nan
+        ta_std = np.std(TAs)
+        return TAs[-1] - ta_std * self.std_multiplier, TAs[-1] + ta_std * self.std_multiplier
 
-    def _calculate_signal(self, symbol) -> SignalEvent:
-        ohlc = self.bars.get_latest_bars(symbol, N=self.timeperiod + 3)  # list of tuples
-        if len(ohlc["datetime"]) != self.timeperiod + 3:
-            return
-        TAs = self.ma_type(ohlc, self.timeperiod)
-        if ohlc["close"][-2] > TAs[-2] and ohlc["close"][-1] < TAs[-1]:
-            return [SignalEvent(symbol, ohlc["datetime"][-1], OrderPosition.SELL, ohlc["close"][-1])]
-        elif ohlc["close"][-2] < TAs[-2] and ohlc["close"][-1] > TAs[-1]:
-            return [SignalEvent(symbol, ohlc["datetime"][-1], OrderPosition.BUY, ohlc["close"][-1])]
+    def _calculate_signal(self, mkt_data, fair_min, fair_max, **kwargs) -> List[SignalEvent]:
+        if np.isnan(fair_min) or np.isnan(fair_max):
+            return []
+        symbol = mkt_data["symbol"]
+        if self._break_up(mkt_data["open"], mkt_data["close"], fair_max):
+            return [SignalEvent(symbol, mkt_data["datetime"], OrderPosition.BUY, mkt_data["close"])]
+        elif self._break_down(mkt_data["open"], mkt_data["close"], fair_min):
+            return [SignalEvent(symbol, mkt_data["datetime"], OrderPosition.SELL, mkt_data["close"])]
 
 
 class DoubleMAStrategy(SimpleTACross):
