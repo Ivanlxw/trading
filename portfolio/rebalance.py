@@ -1,16 +1,14 @@
-import pandas as pd
 from abc import ABCMeta, abstractmethod
-from math import fabs
+import random
 from typing import List
 
-from trading.data.dataHandler import DataHandler
 from trading.utilities.enum import OrderPosition, OrderType
-from trading.event import OrderEvent, SignalEvent
+from trading.event import OrderEvent
 
 
 class Rebalance(metaclass=ABCMeta):
-    def __init__(self, bars) -> None:
-        self.bars = bars
+    def __init__(self) -> None:
+        pass
 
     @abstractmethod
     def need_rebalance(self, current_holdings):
@@ -36,8 +34,8 @@ class NoRebalance(Rebalance):
 
 
 class RebalanceLogicalAll(Rebalance):
-    def __init__(self, bars, rebalance_strategies: List[Rebalance]) -> None:
-        super().__init__(bars)
+    def __init__(self, rebalance_strategies: List[Rebalance]) -> None:
+        super().__init__()
         self.rebalance_strategies = rebalance_strategies
 
     def need_rebalance(self, current_holdings):
@@ -49,8 +47,8 @@ class RebalanceLogicalAll(Rebalance):
 
 
 class RebalanceLogicalAny(Rebalance):
-    def __init__(self, bars, rebalance_strategies: List[Rebalance]) -> None:
-        super().__init__(bars)
+    def __init__(self, rebalance_strategies: List[Rebalance]) -> None:
+        super().__init__()
         self.rebalance_strategies = rebalance_strategies
 
     def need_rebalance(self, current_holdings):
@@ -60,16 +58,10 @@ class RebalanceLogicalAny(Rebalance):
         for rebal in self.rebalance_strategies:
             rebal.rebalance(mkt_data, current_holdings, event_queue)
 
-
-class RebalanceYearly(Rebalance):
-    """EXIT for all positions every year"""
-
-    def need_rebalance(self, current_holdings):
-        return current_holdings["datetime"].week == 1 and current_holdings["datetime"].weekday() == 1
-
+class PeriodicRebalance(Rebalance):
     def rebalance(self, mkt_data, current_holdings, event_queue) -> None:
         symbol = mkt_data["symbol"]
-        latest_close_price = mkt_data["close"][-1]
+        latest_close_price = mkt_data["close"]
         if current_holdings[symbol].net_pos > 0:
             event_queue.appendleft(
                 OrderEvent(
@@ -93,26 +85,36 @@ class RebalanceYearly(Rebalance):
                 )
             )
 
-
-class RebalanceBiennial(RebalanceYearly):
-    """EXIT for all positions every 2 years"""
+class RebalanceYearly(PeriodicRebalance):
+    """EXIT for all positions every year"""
 
     def need_rebalance(self, current_holdings):
-        return (
-            current_holdings["datetime"].week == 1
-            and current_holdings["datetime"].weekday() == 0
-            and current_holdings["datetime"].year % 2 == 0
-        )
+        return current_holdings["datetime"].week == 1 and current_holdings["datetime"].weekday() == 1
 
 
-class RebalanceQuarterly(RebalanceYearly):
+class RebalanceWeekly(PeriodicRebalance):
+    """EXIT for all positions weekly"""
+    DAY_OF_WEEK = random.randint(0, 4)
+
+    def need_rebalance(self, current_holdings):
+        return current_holdings["datetime"].day_of_week == self.DAY_OF_WEEK
+
+
+class RebalanceMonthly(PeriodicRebalance):
+    """EXIT for all positions weekly (default to friday)"""
+    DAY_OF_REBALANCE = random.randint(1, 28)
+
+    def need_rebalance(self, current_holdings):
+        return current_holdings["datetime"].day == self.DAY_OF_REBALANCE
+
+class RebalanceQuarterly(PeriodicRebalance):
     """EXIT for all positions every quarterly"""
 
     def need_rebalance(self, current_holdings):
         return current_holdings["datetime"].is_quarter_start
 
 
-class RebalanceHalfYearly(RebalanceYearly):
+class RebalanceHalfYearly(PeriodicRebalance):
     """EXIT for all positions every HalfYearly"""
 
     def need_rebalance(self, current_holdings):
@@ -123,19 +125,12 @@ class RebalanceHalfYearly(RebalanceYearly):
         )
 
 
-class RebalanceWeekly(RebalanceYearly):
-    """EXIT for all positions every Week"""
-
-    def need_rebalance(self, current_holdings):
-        return current_holdings["datetime"].weekday() == 1
-
-
 class SellLosers(Rebalance, metaclass=ABCMeta):
     """Sell stocks that have recorded >x% losses"""
 
-    def __init__(self, bars, perc: float = 0.05):
+    def __init__(self, perc: float = 0.05):
         assert perc < 1, "percentage should be 0 < perc < 1"
-        super().__init__(bars)
+        super().__init__()
         self.perc = perc
 
     def need_rebalance(self, _):
@@ -211,9 +206,9 @@ class SellLosersMonthly(SellLosers):
 class SellWinners(metaclass=ABCMeta):
     """Sell stocks that have recorded >25% gain"""
 
-    def __init__(self, bars, perc: float = 0.20):
+    def __init__(self, perc: float = 0.20):
         assert perc < 1, "percentage should be 0 < perc < 1"
-        super().__init__(bars)
+        super().__init__()
         self.perc = perc
 
     def need_rebalance(self, _):
