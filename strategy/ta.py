@@ -14,8 +14,8 @@ class SimpleTACross(Strategy):
     Buy/Sell when it crosses the smoothed line (SMA, etc.)
     """
 
-    def __init__(self, timeperiod: int, ma_type, range_multiplier=1.0, description="TACross"):
-        super().__init__(lookback=timeperiod * 2, description=description + f": timeperiod={timeperiod}")
+    def __init__(self, margin, timeperiod: int, ma_type, range_multiplier=1.0, description="TACross"):
+        super().__init__(margin, lookback=timeperiod * 2, description=description + f": timeperiod={timeperiod}")
         self.timeperiod = timeperiod
         self.ma_type = ma_type
         self.std_multiplier = range_multiplier
@@ -33,14 +33,15 @@ class SimpleTACross(Strategy):
         ta_std = np.std(TAs)
         return TAs[-1] - ta_std * self.std_multiplier, TAs[-1] + ta_std * self.std_multiplier
 
-    def _calculate_signal(self, mkt_data, fair_min, fair_max, **kwargs) -> List[SignalEvent]:
-        if np.isnan(fair_min) or np.isnan(fair_max):
-            return []
-        symbol = mkt_data["symbol"]
-        if self._break_up(mkt_data["open"], mkt_data["close"], fair_max):
-            return [SignalEvent(symbol, mkt_data["datetime"], OrderPosition.BUY, mkt_data["close"])]
-        elif self._break_down(mkt_data["open"], mkt_data["close"], fair_min):
-            return [SignalEvent(symbol, mkt_data["datetime"], OrderPosition.SELL, mkt_data["close"])]
+    # def _calculate_signal(self, mkt_data, fair_min, fair_max, **kwargs) -> List[SignalEvent]:
+    #     if np.isnan(fair_min) or np.isnan(fair_max):
+    #         return []
+    #     symbol = mkt_data["symbol"]
+    #     if self._break_up(mkt_data["open"], mkt_data["close"], fair_max):
+    #         return [SignalEvent(symbol, mkt_data["datetime"], OrderPosition.BUY, mkt_data["close"])]
+    #     elif self._break_down(mkt_data["open"], mkt_data["close"], fair_min):
+    #         return [SignalEvent(symbol, mkt_data["datetime"], OrderPosition.SELL, mkt_data["close"])]
+    #     return []
 
 
 class DoubleMAStrategy(SimpleTACross):
