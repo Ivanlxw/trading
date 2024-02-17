@@ -2,14 +2,15 @@ from abc import ABC
 from typing import List
 import copy
 
-from trading.event import SignalEvent
+from trading.event import MarketEvent, SignalEvent
+from trading.portfolio.instrument import Instrument
 from trading.strategy.base import Strategy
 from trading.utilities.enum import OrderPosition
 
 
 class MultipleStrategy(Strategy, ABC):
-    def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
-        super().__init__(bars, events, description)
+    def __init__(self, strategies: List[Strategy], description="") -> None:
+        super().__init__(description=description)
         self.strategies = strategies
 
     def order_same_dir(self, strategies: list):
@@ -24,60 +25,58 @@ class MultipleStrategy(Strategy, ABC):
             final_strat.other_details += f"{strat.other_details} \n"
         return [final_strat]
 
+    def calculate_signals(self, event: MarketEvent, inst: Instrument, **kwargs) -> List[SignalEvent]:
+        if event.type == "MARKET":
+            bars = event.data
+            if bars is None or "open" not in bars or "close" not in bars:
+                return []
+            fair_min, fair_max = self._calculate_fair(event, inst)
+            inst.update_fair({
+                "datetime": bars["datetime"],
+                # Because targets are log(pct_change)
+                "fair_min": fair_min,
+                "fair_max": fair_max,
+            })
+            return self._calculate_signal(bars, fair_min, fair_max)
+        return []
+
 
 class MultipleAllStrategy(MultipleStrategy):
-    def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
-        super().__init__(bars, events, strategies, description)
+    def __init__(self, strategies: List[Strategy], description="") -> None:
+        super().__init__(strategies, description=description)
 
-    def _calculate_signal(self, symbol) -> List[SignalEvent]:
-        strategies = []
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
+        ''' Widest among all strategies '''
+        fair_min = float("inf")
+        fair_max = -float("inf")
         for strategy in self.strategies:
-            sig = strategy._calculate_signal(symbol)
-            if sig is None:
-                return
-            strategies += sig
-        if len(strategies) == len(self.strategies) and self.order_same_dir(strategies):
-            return self.generate_final_strat(strategies)
-        return []
+            tmp_fair_min, tmp_fair_max = strategy._calculate_fair(event, inst)
+            if tmp_fair_min < fair_min:
+                fair_min = tmp_fair_min
+            if tmp_fair_max > fair_max:
+                fair_max = tmp_fair_max 
+        return fair_min, fair_max
 
     def describe(self) -> dict:
         return {"class": self.__class__.__name__, "strategies": [strat.describe() for strat in self.strategies]}
 
 
 class MultipleAnyStrategy(MultipleStrategy):
-    def __init__(self, bars, events, strategies: List[Strategy], min_matches: int = 1, description="") -> None:
-        super().__init__(bars, events, strategies, description)
-        self.min_matches = min_matches  # number of same signal to register signal
+    def __init__(self, strategies: List[Strategy], description="") -> None:
+        super().__init__(strategies, description)
 
-    def _calculate_signal(self, symbol) -> List[SignalEvent]:
-        strategies = []
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
+        ''' Tightest among all strategies '''
+        fair_min = -float("inf")
+        fair_max = float("inf")
         for strategy in self.strategies:
-            sig = strategy._calculate_signal(symbol)
-            if sig is None:
-                continue
-            strategies += sig
-        if len(strategies) >= self.min_matches and self.order_same_dir(strategies):
-            return self.generate_final_strat(strategies)
-        return []
+            tmp_fair_min, tmp_fair_max = strategy._calculate_fair(event, inst)
+            if tmp_fair_min > fair_min:
+                fair_min = tmp_fair_min
+            if tmp_fair_max < fair_max:
+                fair_max = tmp_fair_max 
+        return (fair_min, fair_max) if fair_min < fair_max else (fair_max, fair_min)
 
     def describe(self) -> dict:
         return {"class": self.__class__.__name__, "strategies": [strat.describe() for strat in self.strategies]}
 
-
-class MultipleSendAllStrategy(MultipleStrategy):
-    """Sends ALL strategies - save space holding dataframes in memory when running live"""
-
-    def __init__(self, bars, events, strategies: List[Strategy], description="") -> None:
-        super().__init__(bars, events, strategies, description)
-
-    def _calculate_signal(self, symbol) -> List[SignalEvent]:
-        strategies = []
-        for strategy in self.strategies:
-            sig = strategy._calculate_signal(symbol)
-            if sig is None:
-                continue
-            strategies += sig
-        return strategies
-
-    def describe(self) -> dict:
-        return {"class": self.__class__.__name__, "strategies": [strat.describe() for strat in self.strategies]}

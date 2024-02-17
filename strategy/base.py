@@ -6,11 +6,9 @@ from abc import ABCMeta, abstractmethod
 
 from typing import List, Tuple
 
-import numpy as np
-
 from trading.event import MarketEvent, SignalEvent
-from trading.data.dataHandler import DataHandler
 from trading.portfolio.instrument import Instrument
+from trading.utilities.enum import OrderPosition
 
 
 class Strategy(object, metaclass=ABCMeta):
@@ -24,19 +22,25 @@ class Strategy(object, metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def __init__(self, lookback: int = 100_000, description: str = ""):
+    def __init__(self, margin=0.01, lookback: int = 100_000, description: str = ""):
         """
         Args:
-        bars - DataHandler object that provides bar info
-        events - event queue object
+        margin - some safety before buying/selling, % terms
+        lookback - how much history to keep
         """
         self.description = description
         self.period: int = -1 
         self.lookback: int = lookback
+        self.margin = margin    
+
+    def _calculate_signal(self, mkt_data, fair_min, fair_max, **kwargs) -> List[SignalEvent]:
+        if min(mkt_data["close"], mkt_data["open"]) > fair_max * (1 + self.margin):
+            return [SignalEvent(mkt_data["symbol"], mkt_data["datetime"], OrderPosition.SELL, mkt_data["close"])]
+        elif max(mkt_data["close"], mkt_data["open"]) < fair_min * (1 - self.margin):
+            return [SignalEvent(mkt_data["symbol"], mkt_data["datetime"], OrderPosition.BUY, mkt_data["close"])]
+        return []
 
     def calculate_signals(self, event: MarketEvent, inst: Instrument, **kwargs) -> List[SignalEvent]:
-        """_Returns list(SignalEvents)"""
-        signals = []
         if event.type == "MARKET":
             bars = event.data
             if bars is None or "open" not in bars or "close" not in bars:
@@ -48,18 +52,12 @@ class Strategy(object, metaclass=ABCMeta):
                 "fair_min": fair_min,
                 "fair_max": fair_max,
             })
-            sig = self._calculate_signal(bars, fair_min, fair_max)
-            signals += sig if sig is not None else []
-        return signals
+            return self._calculate_signal(bars, fair_min, fair_max)
+        return []
 
     @abstractmethod
     def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
         ''' fair px calculation logic '''
-        raise NotImplementedError("Need to implement underlying strategy logic:")
-
-    @abstractmethod
-    def _calculate_signal(self, mkt_data, price_move_perc_min, price_move_perc_max, **kwargs) -> List[SignalEvent]:
-        ''' Rule to convert fair price range -> signal'''
         raise NotImplementedError("Need to implement underlying strategy logic:")
 
     def describe(self): 
