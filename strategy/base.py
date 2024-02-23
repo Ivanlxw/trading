@@ -3,8 +3,9 @@ Strategy object take market data as input and produce trading signal events as o
 """
 
 from abc import ABCMeta, abstractmethod
-
 from typing import List, Tuple
+
+import numpy as np
 
 from trading.event import MarketEvent, SignalEvent
 from trading.portfolio.instrument import Instrument
@@ -34,6 +35,8 @@ class Strategy(object, metaclass=ABCMeta):
         self.margin = margin    
 
     def _calculate_signal(self, mkt_data, fair_min, fair_max, **kwargs) -> List[SignalEvent]:
+        if np.isnan(fair_max) or np.isnan(fair_min):
+            return []
         if min(mkt_data["close"], mkt_data["open"]) > fair_max * (1 + self.margin):
             return [SignalEvent(mkt_data["symbol"], mkt_data["datetime"], OrderPosition.SELL, mkt_data["close"])]
         elif max(mkt_data["close"], mkt_data["open"]) < fair_min * (1 - self.margin):
@@ -48,7 +51,6 @@ class Strategy(object, metaclass=ABCMeta):
             fair_min, fair_max = self._calculate_fair(event, inst)
             inst.update_fair({
                 "datetime": bars["datetime"],
-                # Because targets are log(pct_change)
                 "fair_min": fair_min,
                 "fair_max": fair_max,
             })

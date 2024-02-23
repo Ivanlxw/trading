@@ -32,6 +32,7 @@ def lag_features_pl(df, window, subset=None, inference=False):
         return shifted_df
     raise Exception("window arg is of unknown type")
 
+
 def lag_features(df, window, subset=None, inference=False):
     cols_to_apply = subset if subset is not None else df.columns
 
@@ -48,19 +49,21 @@ def lag_features(df, window, subset=None, inference=False):
         return shifted_df
     raise Exception("window arg is of unknown type")
 
+
 def rolling_cols(df, window, aggregation_fn, subset=None, inference=False):
     aggregation_fn_name = aggregation_fn.__name__
     cols_to_apply = subset if subset is not None else df.columns
     return pd.concat(
         [
             df[col]
-            .rolling(window, min_periods=1, closed='both' if inference else 'left')
+            .rolling(window, min_periods=1, closed="both" if inference else "left")
             .apply(aggregation_fn)
             .rename(f"rolling_{aggregation_fn_name}{window}_{col}")
             for col in cols_to_apply
         ],
         axis=1,
     )
+
 
 def average_deviation(df, window, subset=None, keep_average=True, inference=False):
     pattern = f"rolling_average{window}_"

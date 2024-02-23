@@ -54,3 +54,4 @@ class BuyAndHoldStrategy(Strategy):
             if mkt_data is not None and "datetime" in mkt_data and mkt_data["datetime"] is not None:
                 self.bought[symbol] = True
                 return [SignalEvent(symbol, mkt_data["datetime"], OrderPosition.BUY, mkt_data["close"])]
+        return []

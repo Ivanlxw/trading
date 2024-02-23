@@ -40,7 +40,6 @@ class SignalEvent(Event):
     """
 
     def __init__(self, symbol, datetime, order_position: OrderPosition, price: float, other_details: str = ""):
-        # SignalEvent('GOOG', timestamp, OrderPosition.LONG)    # timestamp can be a string or the big numbers
         self.type = "SIGNAL"
         self.symbol = symbol
         self.datetime = datetime
