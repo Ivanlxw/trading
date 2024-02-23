@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import List
+from typing import List, Tuple
 import copy
 
 from trading.event import MarketEvent, SignalEvent
