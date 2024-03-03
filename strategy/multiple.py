@@ -2,6 +2,8 @@ from abc import ABC
 from typing import List, Tuple
 import copy
 
+import numpy as np
+
 from trading.event import MarketEvent, SignalEvent
 from trading.portfolio.instrument import Instrument
 from trading.strategy.base import Strategy
@@ -47,13 +49,13 @@ class MultipleAllStrategy(MultipleStrategy):
 
     def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
         ''' Widest among all strategies '''
-        fair_min = float("inf")
-        fair_max = -float("inf")
+        fair_min = np.nan
+        fair_max = np.nan
         for strategy in self.strategies:
             tmp_fair_min, tmp_fair_max = strategy._calculate_fair(event, inst)
-            if tmp_fair_min < fair_min:
+            if tmp_fair_min < fair_min or np.isnan(fair_min):
                 fair_min = tmp_fair_min
-            if tmp_fair_max > fair_max:
+            if tmp_fair_max > fair_max or np.isnan(fair_max):
                 fair_max = tmp_fair_max 
         return fair_min, fair_max
 
@@ -67,13 +69,13 @@ class MultipleAnyStrategy(MultipleStrategy):
 
     def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
         ''' Tightest among all strategies '''
-        fair_min = -float("inf")
-        fair_max = float("inf")
+        fair_min = np.nan 
+        fair_max = np.nan 
         for strategy in self.strategies:
             tmp_fair_min, tmp_fair_max = strategy._calculate_fair(event, inst)
-            if tmp_fair_min > fair_min:
+            if tmp_fair_min > fair_min or np.isnan(fair_min):
                 fair_min = tmp_fair_min
-            if tmp_fair_max < fair_max:
+            if tmp_fair_max < fair_max or np.isnan(fair_max):
                 fair_max = tmp_fair_max 
         return (fair_min, fair_max) if fair_min < fair_max else (fair_max, fair_min)
 
