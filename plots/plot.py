@@ -42,7 +42,6 @@ class PlotIndividual(Plot):
         self, signals: List[SignalEvent], historical_market_price: Dict[str, pl.DataFrame], 
             historical_fair_price: Dict[str, pl.DataFrame] = None
     ) -> None:
-        sns.set()
         sns.set_style("darkgrid")
         plt.figure(num=None, figsize=(12, 7), facecolor="w", edgecolor="k")
         self.signals = np.array([[sig.symbol, sig.datetime, sig.price, sig.order_position] for sig in signals])
@@ -65,6 +64,8 @@ class PlotIndividual(Plot):
         fig = make_subplots(rows=n_rows, cols=n_cols, subplot_titles=[ticker for ticker in tickers])
 
         for idx, ticker in enumerate(tickers):
+            if data[ticker].is_empty():
+                continue
             obs = data[ticker].to_pandas().set_index(self.signals_cols[:2])
             signals = (
                 pd.DataFrame(self.signals[np.where(self.signals[:, 0] == ticker)], columns=self.signals_cols)
@@ -123,8 +124,8 @@ class PlotIndividual(Plot):
                     go.Scatter(x=df.index, y=df["fair_max"], line=dict(color="green", width=1)),
                     row=row, col=col
                 )
-        min_ts = min([data[sym]["datetime"][0] for sym in tickers])
-        max_ts = max([data[sym]["datetime"][-1] for sym in tickers])
+        min_ts = min([data[sym]["datetime"][0] for sym in tickers if not data[sym].is_empty()])
+        max_ts = max([data[sym]["datetime"][-1] for sym in tickers if not data[sym].is_empty()])
         fig.update_xaxes(rangeslider_visible=False)
         fig.update_layout(showlegend=False, title_text=f"{min_ts} - {max_ts}")
         fig.show()

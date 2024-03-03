@@ -35,7 +35,6 @@ class Portfolio(object, metaclass=ABCMeta):
     ):
         """
         Parameters:
-        bars - The DataHandler object with current market data.
         events - The Event Queue object.
         start_ms - The start date in millisecs (bar) of the portfolio.
         initial_capital - The starting capital in USD.

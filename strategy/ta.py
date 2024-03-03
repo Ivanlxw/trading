@@ -27,7 +27,7 @@ class SimpleTACross(Strategy):
         return curr_px <= fair < prev_px
     
     def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
-        TAs = self.ma_type(inst.historical_market_data, self.timeperiod)
+        TAs = self.ma_type(inst.historical_market_data["close"].to_numpy(), self.timeperiod)
         if len(TAs) < self.timeperiod:
             return np.nan, np.nan
         ta_std = np.std(TAs)
@@ -197,20 +197,6 @@ class TAFunctor(Strategy, ABC):
 
 def sma(ohlc_data, period: int) -> list:
     return talib.SMA(np.array(ohlc_data["close"]), period)
-
-
-def ema(ohlc_data, period: int) -> list:
-    def _ema(curr_value, prev_value):
-        if prev_value is None:
-            return curr_value
-        smoothing_weight = 2 / (1 + period)
-        return curr_value * smoothing_weight + prev_value * (1 - smoothing_weight)
-
-    ema_vals = []
-    for idx, close_val in enumerate(ohlc_data["close"]):
-        ema_vals.append(_ema(close_val, ema_vals[idx - 1] if idx > 0 else None))
-    assert len(ema_vals) == len(ohlc_data["close"]), "length of ema and close data don't match"
-    return np.array(ema_vals)
 
 
 def rsi(ohlc_data, period: int) -> list:

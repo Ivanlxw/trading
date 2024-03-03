@@ -30,7 +30,7 @@ class Feature:
 
 
 @nb.njit
-def _ema(arr, period):
+def ema(arr, period):
     ema_vals = []
     smoothing_weight = 2 / (1 + period)
     curr_value = np.nan
@@ -45,7 +45,7 @@ def _ema(arr, period):
 
 
 @nb.njit
-def _momentum(arr):
+def momentum(arr):
     momentum_val = 0
     momentum_counter = 1
     for idx in range(1, len(arr)):
