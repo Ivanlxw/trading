@@ -29,10 +29,12 @@ class Strategy(object, metaclass=ABCMeta):
         margin - some safety before buying/selling, % terms
         lookback - how much history to keep
         """
-        self.description = description
+        self._description = description
         self.period: int = -1 
         self.lookback: int = lookback
         self.margin = margin    
+        self.fair_min = np.nan
+        self.fair_max = np.nan
 
     def _calculate_signal(self, mkt_data, fair_min, fair_max, **kwargs) -> List[SignalEvent]:
         if np.isnan(fair_max) or np.isnan(fair_min):
@@ -48,20 +50,73 @@ class Strategy(object, metaclass=ABCMeta):
             bars = event.data
             if bars is None or "open" not in bars or "close" not in bars:
                 return []
-            fair_min, fair_max = self._calculate_fair(event, inst)
+            self.fair_min, self.fair_max = self._calculate_fair(event, inst)
             inst.update_fair({
                 "datetime": bars["datetime"],
-                "fair_min": fair_min,
-                "fair_max": fair_max,
+                "fair_min": self.fair_min,
+                "fair_max": self.fair_max,
             })
-            return self._calculate_signal(bars, fair_min, fair_max)
+            return self._calculate_signal(bars, self.fair_min, self.fair_max)
         return []
 
     @abstractmethod
-    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple[float]:
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple:
         ''' fair px calculation logic '''
         raise NotImplementedError("Need to implement underlying strategy logic:")
 
-    def describe(self): 
-        """Return all variables minus bars and events"""
-        return {f"{self.__class__.__name__}": str(self.__dict__)}
+    def get_description(self): 
+        return self._description 
+
+    def __call__(self):
+        """ Feature: returns current fair price range """
+        return self.fair_min, self.fair_max
+
+    def __add__(self, other):
+        assert isinstance(other, Strategy), "Only can add 1 Strategy to another"
+        return StrategyAdd(self, other)
+
+    def __sub__(self, other):
+        assert isinstance(other, Strategy), "Only can add 1 Strategy to another"
+        return StrategySub(lambda fair_price: self._fn(fair_price) - other._fn(fair_price))
+
+    def __mul__(self, other):
+        assert isinstance(other, Strategy), "Only can add 1 Strategy to another"
+        return StrategyMul(lambda fair_price: self._fn(fair_price) * other._fn(fair_price))
+
+    def __truediv__(self, other):
+        assert isinstance(other, Strategy), "Only can add 1 Strategy to another"
+        return StrategyDiv(lambda fair_price: self._fn(fair_price) / other._fn(fair_price))
+
+
+class StrategyAdd(Strategy):
+    def __init__(self, strategy1: Strategy, strategy2: Strategy):
+        super().__init__(
+            margin = 0, 
+            lookback = max(strategy1.lookback, strategy2.lookback),
+            description = f"ADD({strategy1.get_description()},{strategy2.get_description()})"
+        )
+        self.strat1 = strategy1
+        self.strat2 = strategy2
+
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple:
+        ''' fair px calculation logic '''
+        fair_min_1, fair_max_1 = self.strat1._calculate_fair(event, inst)
+        fair_min_2, fair_max_2 = self.strat2._calculate_fair(event, inst)
+        return fair_min_1 + fair_min_2, fair_max_1 + fair_max_2
+
+
+class StrategyDiv(Strategy):
+    def __init__(self, strategy1: Strategy, strategy2: Strategy):
+        super().__init__(
+            margin = 0, 
+            lookback = max(strategy1.lookback, strategy2.lookback),
+            description = f"DIV({strategy1.get_description()},{strategy2.get_description()})",
+        )
+        self.strat1 = strategy1
+        self.strat2 = strategy2
+
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple:
+        ''' fair px calculation logic '''
+        fair_min_1, fair_max_1 = self.strat1._calculate_fair(event, inst)
+        fair_min_2, fair_max_2 = self.strat2._calculate_fair(event, inst)
+        return fair_min_1 / fair_min_2, fair_max_1 / fair_max_2
