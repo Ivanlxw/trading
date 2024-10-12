@@ -26,7 +26,7 @@ class MarketEvent(Event):
     def __init__(self, data: dict):
         self.type = "MARKET"
         self.symbol = data["symbol"]
-        self.data = data 
+        self.data = data
 
 
 class SignalEvent(Event):
@@ -39,7 +39,10 @@ class SignalEvent(Event):
     The SignalEvents are utilised by the Portfolio object as advice for how to trade.
     """
 
-    def __init__(self, symbol, datetime, order_position: OrderPosition, price: float, other_details: str = ""):
+    def __init__(
+        self, symbol, datetime, order_position: OrderPosition, price: float, 
+        other_details: str = "", quantity=None, order_type=None
+    ):
         self.type = "SIGNAL"
         self.symbol = symbol
         self.datetime = datetime
@@ -47,14 +50,14 @@ class SignalEvent(Event):
         self.price = price
         self.other_details = other_details
         # Optional fields
-        self.quantity = None
-        self.order_type = None
+        self.quantity = quantity
+        self.order_type = order_type
 
     def details(self):
-        date_str = self.datetime.strftime("%Y/%m/%d")
+        date_str = self.datetime.strftime("%Y/%m/%d %H:%M:%S")
         return (
             f"Symbol: {self.symbol}\nDate:{date_str}\nPrice:{self.price}\nDirection:{self.order_position}\n"
-            f"Quantity={self.quantity}\n[DETAILS] {self.other_details}"
+            f"Quantity={self.quantity}\nDetails={self.other_details}"
         )
 
 

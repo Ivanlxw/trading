@@ -1,6 +1,5 @@
 from abc import ABCMeta
 from collections import deque
-from datetime import timezone
 import os
 
 from sqlalchemy import create_engine
@@ -16,11 +15,10 @@ class Instrument(metaclass=ABCMeta):
         self.symbol = sym
         self.net_pos = 0
         self.average_trade_price = None
-        # self.latest_datetime = None
         self.latest_ref_price = None
         self.KEEP_LAST_N_DAYS = 50
         self.historical_market_data = pl.DataFrame()
-        self.historical_fair_px = pl.Series()   # fair_min, fair_max
+        self.historical_fair_px = pl.Series()  # fair_min, fair_max
 
     def overwrite(self, net_pos, average_trade_price):
         self.net_pos = net_pos
@@ -39,45 +37,38 @@ class Instrument(metaclass=ABCMeta):
         if not bar_is_valid(bars):
             return
         self.latest_ref_price = bars["close"]
-        bars["datetime"] = bars["datetime"].to_pydatetime().astimezone(timezone.utc)
         latest_data = pl.from_dict(bars)
         essential_hist_data = (
             latest_data
             if self.historical_market_data.is_empty()
-            else pl.concat([self.historical_market_data, latest_data], how='vertical')
+            else pl.concat([self.historical_market_data, latest_data], how="vertical")
         )
         self.historical_market_data = essential_hist_data.tail(self.KEEP_LAST_N_DAYS)
-    
+
     def update_fair(self, fair_prices):
-        assert list(fair_prices.keys()) == ["datetime", "fair_min", "fair_max"]
+        assert list(fair_prices.keys()) == ["timestamp", "fair_min", "fair_max"]
         latest_data = pl.from_dict(fair_prices)
         essential_hist_data = (
             latest_data
             if self.historical_fair_px.is_empty()
-            else pl.concat([self.historical_fair_px, latest_data], how='vertical')
+            else pl.concat([self.historical_fair_px, latest_data], how="vertical")
         )
         self.historical_fair_px = essential_hist_data.tail(self.KEEP_LAST_N_DAYS)
 
     def get_value(self):
-        return (
-            self.net_pos * self.latest_ref_price
-            if self.latest_ref_price is not None
-            else 0
-        )
+        return self.net_pos * self.latest_ref_price if self.latest_ref_price is not None else 0
 
     def update_from_fill(self, signed_fill_qty, fill_px):
+        self.net_pos += signed_fill_qty
         if self.average_trade_price is None:
             self.average_trade_price = fill_px
-            self.net_pos = signed_fill_qty
             return
-        if self.net_pos + signed_fill_qty == 0:
-            self.net_pos = 0
+        if self.net_pos == 0:
             self.average_trade_price = None
             return
-        self.average_trade_price = (
-            self.average_trade_price * self.net_pos + fill_px * signed_fill_qty
-        ) / (self.net_pos + signed_fill_qty)
-        self.net_pos += signed_fill_qty
+        self.average_trade_price = (self.average_trade_price * self.net_pos + fill_px * signed_fill_qty) / (
+            self.net_pos + signed_fill_qty
+        )
 
 
 class Equity(Instrument):
@@ -99,7 +90,7 @@ class Option(Instrument):
     def __init__(self, sym, metadata_info):
         super().__init__(sym)
         ser = metadata_info.iloc[0]  # .squeeze()
-        self.expiry_date = ser.expiration_date.date()
+        self.expiry_ms = ser.expiration_date.date().timestamp() * 1000
         self.strike = ser.strike_price
         self.contract_type = ser.contract_type
         self.underlying_symbol = ser.underlying_sym
@@ -107,18 +98,17 @@ class Option(Instrument):
         self.latest_underlying_ref_price = None
 
     def update_with_underlying(self, underlying_bars, event_queue):
-        # assert not self.settled, "Shouldn't receive any more data on settled instrument"
         self.latest_underlying_ref_price = underlying_bars["close"][-1]
         if self.settled:
             return
-        if (
-            self.net_pos != 0
-            and underlying_bars["datetime"][-1].date() > self.expiry_date
-        ):
-            prev_underlying_date = underlying_bars["datetime"][-2].date()
-            assert prev_underlying_date == self.expiry_date, (
+
+        print(underlying_bars)
+        print(self.expiry_ms)
+        if self.net_pos != 0 and underlying_bars["timestamp"][-1].date() > self.expiry_ms:
+            prev_underlying_date = underlying_bars["timestamp"][-2].date()
+            assert prev_underlying_date == self.expiry_ms, (
                 "Prev bar does not align with expiry date: "
-                f"underlying_prev_date={prev_underlying_date} vs eto_expiry={self.expiry_date}"
+                f"underlying_prev_date={prev_underlying_date} vs eto_expiry={self.expiry_ms}"
             )
             self._settle_expired(underlying_bars["close"][-1], event_queue)
 
@@ -136,7 +126,7 @@ class Option(Instrument):
             )
             order_event = OrderEvent(
                 self.underlying_symbol,
-                self.expiry_date,
+                self.expiry_ms,
                 100 * abs(self.net_pos),
                 order_pos,
                 OrderType.MARKET,

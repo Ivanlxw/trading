@@ -58,6 +58,7 @@ class RebalanceLogicalAny(Rebalance):
         for rebal in self.rebalance_strategies:
             rebal.rebalance(mkt_data, current_holdings, event_queue)
 
+
 class PeriodicRebalance(Rebalance):
     def rebalance(self, mkt_data, current_holdings, event_queue) -> None:
         symbol = mkt_data["symbol"]
@@ -85,6 +86,7 @@ class PeriodicRebalance(Rebalance):
                 )
             )
 
+
 class RebalanceYearly(PeriodicRebalance):
     """EXIT for all positions every year"""
 
@@ -94,6 +96,7 @@ class RebalanceYearly(PeriodicRebalance):
 
 class RebalanceWeekly(PeriodicRebalance):
     """EXIT for all positions weekly"""
+
     DAY_OF_WEEK = random.randint(0, 4)
 
     def need_rebalance(self, current_holdings):
@@ -102,10 +105,12 @@ class RebalanceWeekly(PeriodicRebalance):
 
 class RebalanceMonthly(PeriodicRebalance):
     """EXIT for all positions weekly (default to friday)"""
+
     DAY_OF_REBALANCE = random.randint(1, 28)
 
     def need_rebalance(self, current_holdings):
         return current_holdings["datetime"].day == self.DAY_OF_REBALANCE
+
 
 class RebalanceQuarterly(PeriodicRebalance):
     """EXIT for all positions every quarterly"""

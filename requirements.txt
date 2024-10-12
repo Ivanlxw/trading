@@ -1,6 +1,6 @@
 numpy
 pandas
-sklearn
+scikit-learn
 matplotlib
 requests
 seaborn
@@ -13,3 +13,4 @@ scipy
 xgboost
 tables
 polars
+optuna

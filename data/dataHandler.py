@@ -1,13 +1,16 @@
+import ast
 import datetime
 import os
 import sys
-import numpy as np
+from typing import Optional
 import requests
 import logging
 import pandas as pd
 from abc import ABC, abstractmethod
 from pathlib import Path
 from pathos.pools import ProcessPool
+import zmq
+
 from Data.source.base.DataGetter import OHLC_COLUMNS
 from backtest.utilities.option_info import (
     get_option_metadata_info,
@@ -34,67 +37,21 @@ class DataHandler(ABC):
     - start_ms, end_ms: in millisecs
     """
 
-    def __init__(self, creds: dict, symbol_list, frequency_type, start_ms: int, end_ms: int):
-        self.start_ms = start_ms
-        self.end_ms = end_ms
-        self.frequency_type = frequency_type
+    def __init__(self, creds: dict):
         self.csv_base_dir = Path(os.environ["DATA_DIR"])
         assert self.csv_base_dir.is_dir()
-        # https://polygon.io/docs/stocks/get_v2_aggs_ticker__stocksticker__range__multiplier___timespan___from___to
-        # self.data_fields = ['datetime', 'o', 'h', 'l', 'c', 'v', 'n', 'vw']
         self.data_fields = ["symbol", "datetime"] + list(OHLC_COLUMNS)
 
         self.creds = creds
         self.fundamental_data = None  # depreciated but keep as might use fmp again
         self.option_metadata_info = None
 
-        self.symbol_data = []   # data queue
-        self.symbol_list = symbol_list
-        self.latest_symbol_data = dict((s, []) for s in self.symbol_list)   # data store, just latest
-
-    def _read_and_process_csv(self, s):
-        df = pd.read_csv(
-                os.path.join(
-                    self.csv_base_dir / self.frequency_type / ("options" if s.endswith("_options") else "equity"),
-                    f"{s}.csv",
-                ),
-                index_col=0,
-            )
-        return (s, df.drop_duplicates())
-
-    def _to_generator(self):
-        self.symbol_data['symbol'] = self.symbol_data['symbol'].str.replace("O:", "")
-        self.symbol_list = self.symbol_data.symbol.unique()
-        self.symbol_data = self.symbol_data.reset_index().rename(dict(timestamp="datetime"), axis=1)
-        self.symbol_data['datetime'] = (
-            pd.to_datetime(self.symbol_data['datetime'], unit="ms", utc=True).dt
-            .tz_convert(NY_TIMEZONE)
-        )
-        self.symbol_data = self.symbol_data.sort_values(['datetime', 'symbol'])
-        print(f"Symbol data: {self.symbol_data.shape}")
-        self.symbol_data = iter(self.symbol_data.loc[:, self.data_fields].to_dict('records'))
-    
+    @abstractmethod
     def get_latest_bar(self, symbol):
-        return self.latest_symbol_data[symbol]
-        # if symbol in self.latest_symbol_data:
-        #     bar = dict((k, []) for k in self.data_fields)
-        #     for indi_bar_dict in self.latest_symbol_data[symbol][-N:]:
-        #         for k in indi_bar_dict.keys():
-        #             bar[k] += [indi_bar_dict[k]]
-        #     # convert to np.array
-        #     for k in bar.keys():
-        #         bar[k] = np.array(bar[k])
-        #     bar["symbol"] = symbol
-        #     return bar
-        # logging.error(f"Symbol ({symbol}) is not available in historical data set.")
-
-    @abstractmethod
-    def _adjust_ohlc_ts(self, mkt_data_df):
-        return
-
-    @abstractmethod
-    def _convert_raw_files(self):
-        return
+        """
+            Keep latest bar for reference??
+        """
+        raise NotImplementedError("Should implement update_bars()")
 
     @abstractmethod
     def update_bars(self, event_queue, **kwargs):
@@ -110,7 +67,8 @@ class HistoricCSVDataHandler(DataHandler):
     obtain "latest" bar similar to live trading (drip feed)
     """
 
-    def __init__(self, symbol_list, creds, start_ms: int = None, end_ms: int = None, frequency_type="daily"):
+    def __init__(self, symbol_list, creds,
+                 start_ms: Optional[int] = None, end_ms: Optional[int] = None, frequency_type="daily"):
         """
         Args:
         - Event Queue on which to push MarketEvent information to
@@ -119,10 +77,13 @@ class HistoricCSVDataHandler(DataHandler):
         """
         assert frequency_type in FREQUENCY_TYPES
         super().__init__(creds, symbol_list, frequency_type, start_ms, end_ms)
+        self.start_ms = start_ms
+        self.end_ms = end_ms
         self.frequency_type = frequency_type
 
         self._convert_raw_files()
-        assert self.symbol_list is not None, "data and symbols should have been loaded"
+        self.symbol_list = symbol_list
+        self.latest_symbol_data = dict((s, []) for s in self.symbol_list)   # data store, just latest
         self.continue_backtest = True
 
     def _adjust_ohlc_ts(self, mkt_data_df):
@@ -132,6 +93,16 @@ class HistoricCSVDataHandler(DataHandler):
         mkt_data_df.index += freq * freq_ms
         return mkt_data_df
 
+    def _read_and_process_csv(self, s):
+        df = pd.read_csv(
+                os.path.join(
+                    self.csv_base_dir / self.frequency_type / ("options" if s.endswith("_options") else "equity"),
+                    f"{s}.csv",
+                ),
+                index_col=0,
+            )
+        return (s, df.drop_duplicates())
+    
     def _convert_raw_files(self):
         if sys.platform.startswith("win"):
             dfs = [self._read_and_process_csv(sym) for sym in self.symbol_list]
@@ -147,6 +118,18 @@ class HistoricCSVDataHandler(DataHandler):
             self.symbol_data.append(filtered)
         self.symbol_data = pd.concat(self.symbol_data)
         self._to_generator()
+
+    def _to_generator(self):
+        self.symbol_data['symbol'] = self.symbol_data['symbol'].str.replace("O:", "")
+        self.symbol_list = self.symbol_data.symbol.unique()
+        self.symbol_data = self.symbol_data.reset_index().rename(dict(timestamp="datetime"), axis=1)
+        self.symbol_data['datetime'] = (
+            pd.to_datetime(self.symbol_data['datetime'], unit="ms", utc=True).dt
+            .tz_convert(NY_TIMEZONE)
+        )
+        self.symbol_data = self.symbol_data.sort_values(['datetime', 'symbol'])
+        print(f"Symbol data: {self.symbol_data.shape}")
+        self.symbol_data = iter(self.symbol_data.loc[:, self.data_fields].to_dict('records'))
 
     def __copy__(self):
         return HistoricCSVDataHandler(self.symbol_list, self.creds, self.start_ms, self.end_ms, self.frequency_type)
@@ -171,8 +154,10 @@ class HistoricCSVDataHandler(DataHandler):
                 "vwap": b[1][6],
             }
 
+    def get_latest_bar(self, symbol):
+        return self.latest_symbol_data[symbol]
 
-    def update_bars(self, event_queue, _:bool=False):
+    def update_bars(self, event_queue, **kwargs):
         try:
             bar = next(self.symbol_data)
         except StopIteration:
@@ -239,93 +224,36 @@ class OptionDataHandler(HistoricCSVDataHandler):
         assert len(row) == 1, f"row is not 1: {row.to_string()}"
         return row.ticker
 
+class StreamingDataHandler(DataHandler):
+    def __init__(self, symbol_list, creds):
+        super().__init__(creds)
 
-class DataFromDisk(HistoricCSVDataHandler):
-    """Takes in data from Polygon API but uses TDA API for quotes"""
-
-    def __init__(self, symbol_list, creds: dict, start_ms: int, frequency_type="day") -> None:
-        assert frequency_type in FREQUENCY_TYPES
-        self.frequency_type = frequency_type
-        super().__init__(symbol_list, creds, start_ms, end_ms=None, frequency_type=self.frequency_type)
+        self.symbol_list = symbol_list
         self.continue_backtest = True
-        self._set_symbol_data()
+        self.latest_symbol_data = dict((s, []) for s in self.symbol_list)   # data store, just latest
 
-    def __copy__(self):
-        return DataFromDisk(self.symbol_list, self.creds, self.start_ms, self.frequency_type)
+        ctx = zmq.Context()
+        self.subscriber = ctx.socket(zmq.SUB) 
+        self.subscriber.connect("ipc:///tmp/publisher")
+        self.subscriber.setsockopt_string(zmq.SUBSCRIBE, "")
 
-    def _get_quote(self, ticker):
-        # depreciated: TDA's quote API call
-        res = requests.get(
-            f"https://api.tdameritrade.com/v1/marketdata/{ticker}/quotes",
-            params={
-                "apikey": os.environ["TDD_consumer_key"],
-            },
-        )
-        if res.ok:
-            print(res.json())
+        port = 5524
+        syncsvcreq = ctx.socket(zmq.REQ)
+        syncsvcreq.connect(f"tcp://127.0.0.1:{port}")
+        syncsvcreq.send_string("Establish connection")
+        syncsvcreq.recv()
 
-    # to depreciate bc storing data in memory takes too much space
-    def _set_symbol_data(self) -> None:
-        # get from disk
-        sym_to_remove = []
-        comb_index = None
-        self.symbol_data = {}  # reset symbol_data
-        if sys.platform.startswith("win"):
-            dfs = [
-                (
-                    sym,
-                    pd.read_csv(
-                        os.path.join(self.csv_base_dir / f"{sym}.csv"),
-                        index_col=0,
-                    )
-                    .drop_duplicates()
-                    .sort_index()
-                    .iloc[-500:]
-                    .loc[:, OHLC_COLUMNS],
-                )
-                for sym in self.symbol_list
-            ]
-        else:
-            with ProcessPool(8) as p:
-                dfs = p.map(
-                    lambda s: (
-                        s,
-                        pd.read_csv(
-                            os.path.join(self.csv_base_dir / f"{s}.csv"),
-                            index_col=0,
-                        )
-                        .drop_duplicates()
-                        .sort_index()
-                        .iloc[-500:]
-                        .loc[:, OHLC_COLUMNS],
-                    ),
-                    self.symbol_list,
-                )
-        for sym, price_history in dfs:
-            if price_history.empty:
-                logging.info(f"Empty dataframe for {sym}")
-                sym_to_remove.append(sym)
-                continue
-            self.symbol_data[sym] = price_history
-            # combine index to pad forward values
-            if comb_index is None:
-                comb_index = self.symbol_data[sym].index
-            else:
-                comb_index.union(self.symbol_data[sym].index.drop_duplicates())
-        logging.info(f"[_set_symbol_data] Excluded symbols: {sym_to_remove}")
-        for sym in self.symbol_data:
-            self.symbol_data[sym] = self.symbol_data[sym].reindex(index=comb_index, method="pad", fill_value=0)
-            self.symbol_data[sym].index = self.symbol_data[sym].index.map(convert_ms_to_timestamp)
-            self.symbol_data[sym]["datetime"] = self.symbol_data[sym].index.values
-            self.latest_symbol_data[sym] = self.symbol_data[sym].loc[:, self.data_fields[1:]].to_dict("records")
+    def get_latest_bar(self, symbol):
+        return self.latest_symbol_data[symbol]
 
     def update_bars(self, event_queue, **kwargs):
-        live = kwargs.get('live', False)
-        if not live:
-            super().update_bars(event_queue)
+        # recieve msg
+        message = self.subscriber.recv()
+        if message == b"END":
+            self.continue_backtest = False
             return
-        log_message("reading prices from disk")
-        self._set_symbol_data()
-        for sym in self.symbol_data:
-            bars = self.get_latest_bar(sym)
-            event_queue.appendleft(MarketEvent(bars))
+        d = ast.literal_eval(message.decode("utf-8"))
+        bar = d
+        if bar is not None:
+            self.latest_symbol_data[bar["symbol"]] = bar
+            event_queue.appendleft(MarketEvent(bar))

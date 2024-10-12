@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 import re
 
@@ -17,6 +18,14 @@ def convert_ms_to_timestamp(time_ms: int):
     return convert
 
 
+def dt_to_ms(dt: datetime):
+    return dt.timestamp() * 1000
+
+
+def timedelta_to_ms(td):
+    return td.total_seconds() * 1000
+
+
 def timestamp_to_ms(ts: pd.Timestamp):
     return int(ts.timestamp() * 1000)
 
@@ -26,7 +35,7 @@ def daily_date_range(start: pd.Timestamp, end: pd.Timestamp):
 
 
 def bar_is_valid(bar):
-    if bar["datetime"] is None:
+    if bar["timestamp"] is None:
         return False
     return not np.isnan(bar["close"]) and not np.isnan(bar["open"])
 
