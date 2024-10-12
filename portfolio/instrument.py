@@ -66,9 +66,8 @@ class Instrument(metaclass=ABCMeta):
         if self.net_pos == 0:
             self.average_trade_price = None
             return
-        self.average_trade_price = (self.average_trade_price * self.net_pos + fill_px * signed_fill_qty) / (
-            self.net_pos + signed_fill_qty
-        )
+        self.average_trade_price = (
+            self.average_trade_price * (self.net_pos - signed_fill_qty) + fill_px * signed_fill_qty) / self.net_pos
 
 
 class Equity(Instrument):
