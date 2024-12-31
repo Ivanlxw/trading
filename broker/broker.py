@@ -1,29 +1,25 @@
 from typing import List
 import datetime
-import os
 import threading
 import time
-import logging
 from abc import ABC, abstractmethod
-import requests
-import pandas as pd
-import json
 
-from ibapi.client import EClient
+from ibapi.client import *
+from ibapi.wrapper import *
 from ibapi.contract import Contract
-from ibapi.wrapper import EWrapper
-import alpaca_trade_api
+from ibapi.order import *
 
-from backtest.utilities.utils import log_message
 from trading.broker.gatekeepers import DummyGateKeeper, GateKeeper
 from trading.event import FillEvent, OrderEvent
-from trading.portfolio.portfolio import NaivePortfolio, Portfolio
+from trading.portfolio.portfolio import Portfolio
 from trading.utilities.enum import OrderPosition, OrderType
+from trading.utilities.utils import custom_excepthook
 
+threading.excepthook = custom_excepthook
 
 class Broker(ABC):
-    def __init__(self, port, gatekeepers):
-        self.port = port
+    def __init__(self, portfolio, gatekeepers):
+        self.portfolio: Portfolio = portfolio
         if gatekeepers is None or len(gatekeepers) == 0:
             self.gatekeepers = [DummyGateKeeper()]
         else:
@@ -67,7 +63,7 @@ class Broker(ABC):
         pass
 
     def check_gk(self, event: OrderEvent):
-        return all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers)
+        return all(gk.check_gk(event, self.portfolio.current_holdings) for gk in self.gatekeepers)
 
 
 """
@@ -78,8 +74,8 @@ TODO:
 
 
 class SimulatedBroker(Broker):
-    def __init__(self, bars, port, gatekeepers: List[GateKeeper] = None):
-        super().__init__(port, gatekeepers)
+    def __init__(self, bars, portfolio, gatekeepers: List[GateKeeper] = None):
+        super().__init__(portfolio, gatekeepers)
         self.bars = bars
 
     def calculate_commission(self, quantity=None, fill_cost=None) -> float:
@@ -144,32 +140,25 @@ class SimulatedBroker(Broker):
 
 
 class IBBroker(Broker, EWrapper, EClient):
-    def __init__(self, events):
+    def __init__(self, portfolio, gatekeepers, is_live_acct: bool):
+        Broker.__init__(self, portfolio, gatekeepers)
         EClient.__init__(self, self)
         self.fill_dict = {}
-        self.hist_data = []
+        self.is_real_acct = is_live_acct
 
-        self.connect("127.0.0.1", 7497, 123)
-        self.tws_conn = self.create_tws_connection()
-        self.reqMarketDataType(3)  # DELAYED
+        # hardcoded port to 7497, change to 7496 when going live
         self.order_id = self.create_initial_order_id()
-        # self.register_handlers()
+        self.connect("127.0.0.1", 7497, clientId=self.order_id - 1)
+        self.create_tws_connection()
+        self.orders = []
+        self.portfolio.update_from_ibkr(self.is_real_acct)
 
     def create_tws_connection(self) -> None:
-        """
-        Connect to the Trader Workstation (TWS) running on the
-        usual port of 7496, with a clientId of 10.
-        The clientId is chosen by us and we will need
-        separate IDs for both the broker connection and
-        market data connection, if the latter is used elsewhere.
-        - Should run in a new thread
-        """
-
         def run_loop():
             self.run()
 
-        api_thread = threading.Thread(target=run_loop, daemon=True)
-        api_thread.start()
+        self.api_thread = threading.Thread(target=run_loop, daemon=True)
+        self.api_thread.start()
         time.sleep(1)  # to allow connection to server
 
     def create_initial_order_id(self):
@@ -180,25 +169,17 @@ class IBBroker(Broker, EWrapper, EClient):
         Can always reset the current API order ID via:
         Trader Workstation > Global Configuration > API Settings panel:
         """
-        # will use "1" as the default for now.
-        return 1
+        # will use "1004" as the default for now.
+        return 1004
 
-    # create a Contract instance and then pair it with an Order instance,
-    # which will be sent to the IB API
-    def create_contract(self, symbol, sec_type, exchange="SMART", currency="USD"):
-        contract = Contract()
-        contract.symbol = symbol
-        contract.secType = sec_type
-        contract.exchange = exchange
-        contract.currency = currency
-        return contract
+    def accountSummary(self, reqId: int, account: str, tag: str, value: str, currency: str):
+        # override EWrapper.accountSummary
+        print("AccountSummary. ReqId:", reqId, "Account:", account,
+              "Tag: ", tag, "Value:", value, "Currency:", currency)
 
-    # Overwrite EClient.historicalData
-    def historicalData(self, reqId, bar):
-        print(f"Time: {bar.date} Close: {bar.close}")
-        self.hist_data.append([bar.date, bar.close])
-        # if eurusd_contract.symbol in my_td_broker.hist_data.keys():
-        #     my_td_broker.hist_data[eurusd_contract.symbol].append()
+    def accountSummaryEnd(self, reqId: int):
+        # override EWrapper.accountSummaryEnd
+        print("AccountSummaryEnd. ReqId:", reqId)
 
     def _error_handler(self, msg):
         # Handle open order orderId processing
@@ -223,17 +204,26 @@ class IBBroker(Broker, EWrapper, EClient):
         # reply_handler function defined above
         self.tws_conn.registerAll(self._reply_handler)
 
-    def create_order(self, order_type, quantity, action):
-        """
-        order_type - MARKET, LIMIT for Market or Limit orders
-        quantity - Integral number of assets to order
-        action - 'BUY' or 'SELL'
-        """
-        order = OrderEvent()
-        order.m_orderType = order_type
-        order.m_totalQuantity = quantity
-        order.m_action = action
+    def _filter_execute_order(self, latest_snapshot, order_event: OrderEvent) -> bool:
+        # let ibkr's engine handle
+        return True
 
+    # create a Contract instance and then pair it with an Order instance,
+    # which will be sent to the IB API
+    def create_contract(self, symbol, sec_type, exchange="SMART", currency="USD"):
+        contract = Contract()
+        contract.symbol = symbol
+        contract.secType = sec_type
+        contract.exchange = exchange
+        contract.currency = currency
+        return contract
+
+    def convert_order_event_to_ib_order(self, order_event: OrderEvent) -> Order:
+        order = Order()
+        order.action = 'BUY' if order_event.direction == OrderPosition.BUY else 'SELL'
+        order.totalQuantity = order_event.quantity
+        order.lmtPrice = order_event.signal_price
+        order.orderType = 'LMT' # always limit for now, change in future.
         return order
 
     def create_fill_dict_entry(self, msg):
@@ -256,46 +246,60 @@ class IBBroker(Broker, EWrapper, EClient):
         direction = fd["direction"]
         fill_cost = msg.avgFillPrice
 
-        fill = FillEvent(datetime.datetime.utcnow(), symbol, exchange, filled, direction, fill_cost)
+        fill = FillEvent(datetime.datetime.now(datetime.timezone.utc), symbol,
+                         exchange, filled, direction, fill_cost)
         self.fill_dict[msg.orderId]["filled"] = True
         event_queue.appendleft(fill)
+        
+    def _put_fill_event(self, order_event: OrderEvent, event_queue):
+        order_event.trade_price = order_event.signal_price
+        fill_event = FillEvent(order_event, self.calculate_commission(order_event.quantity, order_event.trade_price))
+        event_queue.append(fill_event)
+        return True
+    
+    def update_portfolio_positions(self):
+        self.portfolio.update_from_ibkr(self.is_real_acct)
 
-    def execute_order(self, event) -> bool:
+    def execute_order(self, event: OrderEvent, event_queue, order_queue) -> bool:
         if event is None:
             return False
         self.update_portfolio_positions()  # get latest curr_holdings from broker
-        if event.type == "ORDER" and all(gk.check_gk(event, self.port.current_holdings) for gk in self.gatekeepers):
+        print("Sending order, checking gk")
+        if event.type == "ORDER" and all(gk.check_gk(event, self.portfolio.current_holdings) for gk in self.gatekeepers):
             if event is not None:
-                asset = event.symbol
                 asset_type = "STK"
-                order_type = event.order_type
-                quantity = event.quantity
-                direction = event.direction
-
-                # Create the Interactive Brokers contract via the
-                # passed Order event
-                ib_contract = self.create_contract(
-                    asset, asset_type, self.order_routing, self.order_routing, self.currency
+                contract = self.create_contract(
+                    event.symbol, asset_type, exchange="SMART", currency="USD"
                 )
+                ib_order = self.convert_order_event_to_ib_order(event)
 
-                # Create the Interactive Brokers order via the
-                # passed Order event
-                ib_order = self.create_order(order_type, quantity, direction)
-
-                # Use the connection to the send the order to IB
-                self.tws_conn.placeOrder(self.order_id, ib_contract, ib_order)
-
+                self.placeOrder(self.order_id, contract, ib_order)
                 time.sleep(1)
                 self.order_id += 1
-                return True
+
+                return self._put_fill_event(event, event_queue)
         return False
 
-    def calculate_commission(self, quantity, fill_cost):
+    def calculate_commission(self, quantity, fill_px):
         full_cost = 1.3
         if quantity <= 500:
             full_cost = max(full_cost, 0.013 * quantity)
         else:
             full_cost = max(full_cost, 0.008 * quantity)
-        full_cost = min(full_cost, 0.005 * quantity * fill_cost)
-
+        full_cost = min(full_cost, 0.005 * quantity * fill_px)
         return full_cost
+    
+    def openOrder(self, orderId, contract, order, orderState):
+        print(f"Open Order. Id: {orderId}, Symbol: {contract.symbol}, Status: {orderState.status}")
+        self.orders.append(orderId)  # Store the order ID
+
+    def openOrderEnd(self):
+        print("Received all open orders.")
+        for orderId in self.orders:
+            self.cancelOrder(orderId)  # Cancel each order
+            print(f"Cancelled Order ID: {orderId}")
+
+    def cancelAllOrders(self):
+        self.orders = []
+        self.reqOpenOrders()
+        self.openOrderEnd()

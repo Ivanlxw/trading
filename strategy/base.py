@@ -10,6 +10,7 @@ import numpy as np
 from trading.event import MarketEvent, SignalEvent
 from trading.portfolio.instrument import Instrument
 from trading.utilities.enum import OrderPosition
+from trading.utilities.utils import bar_is_valid
 
 
 class Strategy(object, metaclass=ABCMeta):
@@ -48,7 +49,7 @@ class Strategy(object, metaclass=ABCMeta):
     def calculate_signals(self, event: MarketEvent, inst: Instrument, **kwargs) -> List[SignalEvent]:
         if event.type == "MARKET":
             bars = event.data
-            if bars is None or "open" not in bars or "close" not in bars:
+            if not bar_is_valid(bars):
                 return []
             self.fair_min, self.fair_max = self._calculate_fair(event, inst)
             inst.update_fair({

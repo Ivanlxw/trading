@@ -149,20 +149,22 @@ class PremiumLimit(GateKeeper):
 class MaxPortfolioPercPerInst(GateKeeper):
     """Total trade value of a symbol has to be <= x% of total portfolio value"""
 
-    def __init__(self, bars: DataHandler, position_percentage: float) -> None:
+    def __init__(self, position_percentage: float) -> None:
         assert position_percentage < 1 and position_percentage > 0, "position_percentage argument should be 0 < x < 1"
-        self.bars = bars
         self.position_percentage = position_percentage
 
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
-        symbol_close_px = self.bars.get_latest_bar(order_event.symbol)["close"]
+        symbol_signal_px = order_event.signal_price
         is_within_max_value_per_inst: bool = (
-            abs(current_holdings[order_event.symbol].net_pos + order_event.quantity)
-            <= (current_holdings["total"] * self.position_percentage) // symbol_close_px
+            abs(current_holdings[order_event.symbol].net_pos + 
+                order_event.quantity * (-1 if order_event.direction == OrderPosition.SELL else 1))
+            <= (current_holdings["total"] * self.position_percentage) // symbol_signal_px 
         )
         if not is_within_max_value_per_inst:
             log_message(
-                f'[Gatekeepers] MaxPortValuePerInst ({order_event.symbol}): MaxValue={current_holdings["total"] * self.position_percentage}, SymValue={symbol_close_px * order_event.quantity}'
+                f'[Gatekeepers] MaxPortValuePerInst ({order_event.symbol}): '
+                f'MaxValue={current_holdings["total"] * self.position_percentage}, '
+                f'SymValue={symbol_signal_px * order_event.quantity}'
             )
         # current_holdings[order_event.symbol].net_pos
         return is_within_max_value_per_inst

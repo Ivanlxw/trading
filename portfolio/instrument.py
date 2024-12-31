@@ -7,7 +7,7 @@ import polars as pl
 
 from trading.event import FillEvent, OrderEvent
 from trading.utilities.enum import OrderPosition, OrderType
-from trading.utilities.utils import bar_is_valid
+from trading.utilities.utils import bar_is_valid, get_price_key
 
 
 class Instrument(metaclass=ABCMeta):
@@ -29,6 +29,22 @@ class Instrument(metaclass=ABCMeta):
             "net_pos": self.net_pos,
             "average_trade_price": self.average_trade_price,
         }
+    
+    def update_pos_with_ibkr(self, ibkr_sym_info: dict):
+        ''' eg data
+            {
+                'Symbol': 'AES', 'SecType': 'STK', 'Exchange': '', 'Position': '400',
+                'MarketPrice': '12.98999975', 'MarketValue': '5196',
+                'AverageCost': '13.20528025',
+                'UnrealizedPNL': '-86.11',
+                'RealizedPNL': '0',
+                'AccountName': 'U6816355'
+            },
+        '''
+        self.net_pos = float(ibkr_sym_info['Position'])
+        self.average_trade_price = float(ibkr_sym_info['AverageCost'])
+        self.latest_ref_price = float(ibkr_sym_info['MarketPrice'])
+
 
     def update(self, bars):
         assert (
@@ -36,7 +52,8 @@ class Instrument(metaclass=ABCMeta):
         ), f"passing wrong symbol into EquityPortfolioContext({self.symbol}): {bars['symbol']}"
         if not bar_is_valid(bars):
             return
-        self.latest_ref_price = bars["close"]
+        price_key = get_price_key(bars)
+        self.latest_ref_price = bars[price_key]
         latest_data = pl.from_dict(bars)
         essential_hist_data = (
             latest_data
@@ -74,15 +91,17 @@ class Equity(Instrument):
     def __init__(self, sym):
         super().__init__(sym)
         conn = create_engine(os.environ["DB_URL"]).connect()
-        equity_metadata_df = pl.read_database(
-            f"select * from backtest.equity_metadata where ticker = '{self.symbol}'",
-            connection=conn,
-        )
-        if equity_metadata_df.is_empty():
-            self.sic_code = "9"
-        else:
-            # print(equity_metadata_df)
-            self.sic_code = equity_metadata_df["sic_code"][0]
+        ## sic code broken because database reset to support ibkr data instead of polygon or other sources.
+        ## TODO: find some kind of equity metadata on ibkr and then write to db, reinstate option strategies
+        # equity_metadata_df = pl.read_database(
+        #     f"select * from backtest.equity_metadata where ticker = '{self.symbol}'",
+        #     connection=conn,
+        # )
+        # if equity_metadata_df.is_empty():
+        #     self.sic_code = "9"
+        # else:
+        #     # print(equity_metadata_df)
+        #     self.sic_code = equity_metadata_df["sic_code"][0]
 
 
 class Option(Instrument):
@@ -97,7 +116,8 @@ class Option(Instrument):
         self.latest_underlying_ref_price = None
 
     def update_with_underlying(self, underlying_bars, event_queue):
-        self.latest_underlying_ref_price = underlying_bars["close"][-1]
+        price_key = get_price_key(underlying_bars)
+        self.latest_underlying_ref_price = (underlying_bars[price_key])[-1]
         if self.settled:
             return
 
@@ -109,7 +129,7 @@ class Option(Instrument):
                 "Prev bar does not align with expiry date: "
                 f"underlying_prev_date={prev_underlying_date} vs eto_expiry={self.expiry_ms}"
             )
-            self._settle_expired(underlying_bars["close"][-1], event_queue)
+            self._settle_expired(underlying_bars[price_key][-1], event_queue)
 
     def _settle_expired(self, close_price, event_queue: deque):
         # TODO: Should be under broker

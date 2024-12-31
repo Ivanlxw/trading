@@ -16,16 +16,15 @@ from trading.utilities.enum import OrderPosition
 
 
 class Plot:
-    def __init__(self, port) -> None:
-        """port should be a portfolio class that has a member equity_curve which holds a pd.DataFrame"""
-        self.port = port
-        sns.set()
+    def __init__(self, portfolio) -> None:
+        """should be a portfolio class that has a member equity_curve which holds a pd.DataFrame"""
+        self.portfolio = portfolio 
         sns.set_style("darkgrid")
 
     def _plot_equity_curve(self):
         plt.title("Assets over time")
-        plt.plot(self.port.equity_curve["total"], label=self.port.portfolio_name + "_total")
-        plt.plot(self.port.equity_curve["cash"], label=self.port.portfolio_name + "_cash")
+        plt.plot(self.portfolio.equity_curve["total"], label=self.portfolio.portfolio_name + "_total")
+        plt.plot(self.portfolio.equity_curve["cash"], label=self.portfolio.portfolio_name + "_cash")
         plt.tight_layout()
 
     def plot(self):
@@ -43,7 +42,7 @@ class PlotIndividual(Plot):
             historical_fair_price: Dict[str, pl.DataFrame] = None
     ) -> None:
         sns.set_style("darkgrid")
-        plt.figure(num=None, figsize=(12, 7), facecolor="w", edgecolor="k")
+        plt.figure(num=None, figsize=(12, 7), facecolor="grey", edgecolor="k")
         self.signals = np.array([[sig.symbol, sig.datetime, sig.price, sig.order_position] for sig in signals])
         self.signals_cols = ["symbol", "datetime", "order_px", "order_position"]
         self.L = min(9, len(historical_market_price))

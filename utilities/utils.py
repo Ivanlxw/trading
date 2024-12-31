@@ -34,11 +34,27 @@ def daily_date_range(start: pd.Timestamp, end: pd.Timestamp):
     return pd.date_range(start, end)
 
 
+def is_bar_data(bar):
+    return "high" in bar and "low" in bar
+
+
+def get_price_key(bar):
+    return "close" if is_bar_data(bar) else "last_price"
+
+
 def bar_is_valid(bar):
     if bar["timestamp"] is None:
         return False
-    return not np.isnan(bar["close"]) and not np.isnan(bar["open"])
+    if "close" in bar or "open" in bar:
+        return (not np.isnan(bar["close"]) and not np.isnan(bar["open"]))
+    # assume tick data
+    return not np.isnan(bar["last_price"])
 
 
 def is_option(symbol) -> bool:
     return re.match(r'(O:)?[A-Z]+[0-9]{6}[C|P]*', symbol) is not None
+
+
+def custom_excepthook(args):
+    """ Mainly used for IBKR threading when connecting to tws api """
+    print(f"Unhandled exception in thread: {args.exc_type.__name__}: {args.exc_value}")

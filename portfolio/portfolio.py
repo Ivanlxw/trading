@@ -1,19 +1,22 @@
 import json
 import os
+import time
+from abc import ABCMeta, abstractmethod
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from datetime import timedelta
-from abc import ABCMeta, abstractmethod
+from sqlalchemy import create_engine
 
 from backtest.performance import create_sharpe_ratio, create_drawdowns
+from backtest.utilities.ibkr._base import IBClient
 from backtest.utilities.utils import log_message
 from trading.portfolio.instrument import Equity, Instrument, Option
 from trading.utilities.utils import NY_TIMEZONE, bar_is_valid, convert_ms_to_timestamp, is_option, timedelta_to_ms
 
 from trading.event import FillEvent, OrderEvent, SignalEvent
-from trading.portfolio.rebalance import NoRebalance, Rebalance
+from trading.portfolio.rebalance import Rebalance
 from trading.utilities.enum import OrderPosition, OrderType
 
 ABSOLUTE_BT_DATA_DIR = Path(os.environ["DATA_DIR"])
@@ -57,6 +60,40 @@ class Portfolio(object, metaclass=ABCMeta):
             self._setup_holdings_from_json(ABSOLUTE_BT_DATA_DIR / f"portfolio/cur_holdings/{self.portfolio_name}.json")
         assert isinstance(self.current_holdings, dict)
         self.all_holdings = self.construct_all_holdings()
+    
+    def update_from_ibkr(self, live: bool):
+            eng = create_engine(os.environ["DB_URL"])
+            
+            # get data
+            c = IBClient(eng, live)
+            acc_id = os.environ[("IBKR_USERID" if live else "IBKR_PAPER_USERID")]
+            c.reqAccountUpdates(True, acc_id)
+            time.sleep(1)
+            ibkr_portfolio_detail = c.portfolio_detail.copy()
+            c.reqAccountUpdates(False, acc_id)
+            c.api_thread.join(timeout=5)
+            log_message(ibkr_portfolio_detail)
+            
+            self.current_holdings = dict()
+            for k, v in ibkr_portfolio_detail.items():
+                if isinstance(v, dict):
+                    if v['SecType'] == 'STK':
+                        inst = Equity(k)
+                        inst.update_pos_with_ibkr(v)
+                        self.current_holdings[k] = inst
+                        if k not in self.symbol_list:
+                            self.symbol_list.append(k)
+                    continue
+                self.current_holdings[k] = float(ibkr_portfolio_detail[k])
+            for sym in self.symbol_list:
+                if sym not in self.current_holdings:
+                    # again, only working for Equity
+                    self.current_holdings[sym] = Equity(sym)
+            self.current_holdings['timestamp'] = 0 
+            self.current_holdings['commission'] = 0 
+            self.all_holdings = self.construct_all_holdings()
+            log_message(f"[updated_with_ibkr] current_holdings: {self.current_holdings}")
+            log_message(f"[updated_with_ibkr] all_holdings: {self.all_holdings}")
 
     def set_keep_historical_data_period(self, N: int):
         for k, ctx in self.current_holdings.items():
@@ -71,6 +108,8 @@ class Portfolio(object, metaclass=ABCMeta):
 
     def _generate_inst_port_context(self, s, metadata_info) -> Instrument:
         if is_option(s):
+            # option metadata might be not working or outdated
+            # TODO: Use ibkr's Contract
             sym_metadata_info = metadata_info.loc[metadata_info.ticker == s]
             if sym_metadata_info.empty:
                 return
@@ -268,7 +307,7 @@ class NaivePortfolio(Portfolio):
 
     def generate_order(self, signal: SignalEvent) -> OrderEvent:
         return OrderEvent(
-            signal.symbol, signal.datetime, self.qty, signal.order_position, self.order_type, signal.price
+            signal.symbol, signal.timestamp, self.qty, signal.order_position, self.order_type, signal.price
         )
 
 
@@ -289,7 +328,7 @@ class SignalDefinedPosPortfolio(Portfolio):
             return
         return OrderEvent(
             signal.symbol,
-            signal.datetime,
+            signal.timestamp,
             signal.quantity,
             signal.order_position,
             signal.order_type,
@@ -318,14 +357,14 @@ class FixedTradeValuePortfolio(Portfolio):
             return
         if signal.quantity is not None:
             return OrderEvent(
-                signal.symbol, signal.datetime, signal.quantity, signal.order_position, self.order_type, signal.price
+                signal.symbol, signal.timestamp, signal.quantity, signal.order_position, self.order_type, signal.price
             )
         qty = signal.quantity if signal.quantity is not None else min(self.trade_value // signal.price, self.max_qty)
         if qty <= 0:
             return
         return OrderEvent(
             signal.symbol,
-            signal.datetime,
+            signal.timestamp,
             qty,
             signal.order_position,
             signal.order_type if signal.order_type is not None else self.order_type,
@@ -355,7 +394,7 @@ class PercentagePortFolio(Portfolio):
     def generate_order(self, signal: SignalEvent) -> OrderEvent:
         if signal.quantity is not None:
             return OrderEvent(
-                signal.symbol, signal.datetime, signal.quantity, signal.order_position, self.order_type, signal.price
+                signal.symbol, signal.timestamp, signal.quantity, signal.order_position, self.order_type, signal.price
             )
         size = (
             (self.current_holdings["cash"] * self.perc) // signal.price
@@ -364,4 +403,4 @@ class PercentagePortFolio(Portfolio):
         )
         if size <= 0:
             return
-        return OrderEvent(signal.symbol, signal.datetime, size, signal.order_position, self.order_type, signal.price)
+        return OrderEvent(signal.symbol, signal.timestamp, size, signal.order_position, self.order_type, signal.price)
