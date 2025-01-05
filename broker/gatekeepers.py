@@ -6,19 +6,18 @@ from backtest.utilities.utils import log_message
 from trading.data.dataHandler import DataHandler
 
 from trading.event import OrderEvent
+from trading.portfolio.instrument import Instrument
 from trading.utilities.enum import OrderPosition, OrderType
 
 
 class GateKeeper(metaclass=ABCMeta):
-    def _alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
-        """
-        Updates order_event based on gatekeeper, often unnecessary
-        """
-        return order_event
-
     @abstractmethod
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
         raise NotImplementedError("Should implement check_gk(order_event, current_position)")
+    
+    def alter_order(self, order_event: OrderEvent, current_holdings: dict):
+        ''' None = don't proceed with order '''
+        return
 
 
 class DummyGateKeeper(GateKeeper):
@@ -27,7 +26,7 @@ class DummyGateKeeper(GateKeeper):
 
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
         return True
-
+    
 
 class ProgressiveOrder(GateKeeper):
     def __init__(self) -> None:
@@ -36,14 +35,14 @@ class ProgressiveOrder(GateKeeper):
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
         return True
 
-    def _alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
+    def alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
         """
         takes a signal to long or short an asset and then sends an order of qty (provided)
         """
         symbol = order_event.symbol
         direction = order_event.direction
 
-        cur_quantity = self.current_holdings[symbol].net_pos
+        cur_quantity = current_holdings[symbol].net_pos
         if direction == OrderPosition.BUY and cur_quantity < 0:
             order_event.quantity -= cur_quantity
         elif direction == OrderPosition.SELL and cur_quantity > 0:
@@ -60,7 +59,7 @@ class NoShort(GateKeeper):
             order_event.direction == OrderPosition.SELL and current_holdings[order_event.symbol].net_pos > 0
         )
 
-    def _alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
+    def alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
         """
         takes a signal, short=exit and then sends an order of qty (provided)
         """
@@ -92,19 +91,17 @@ class MaxPortfolioPosition(GateKeeper):
         self.max_pos = max_pos
 
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
-        total_pos = sum(v.net_pos if isinstance(v, dict) and "quantity" in v else 0 for v in current_holdings.values())
-        if not total_pos < self.max_pos:
-            log_message(f"[Gatekeepers] {order_event.symbol}: total_pos={total_pos}, max_pos={self.max_pos}")
+        total_pos = sum(abs(v.net_pos) if isinstance(v, Instrument) else 0 for v in current_holdings.values())
+        log_message(f"[Gatekeepers] {order_event.symbol}: total_pos={total_pos}, max_pos={self.max_pos}")
         return total_pos < self.max_pos
 
-    def _alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
-        if order_event.direction == OrderPosition.BUY:
-            total_pos = sum(
-                v.net_pos if isinstance(v, dict) and "quantity" in v else 0 for v in current_holdings.values()
-            )
-            order_event.quantity = min(self.max_pos - total_pos, order_event.quantity)
+    def alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
+        total_pos = sum(
+            abs(v.net_pos) if isinstance(v, Instrument) else 0 for v in current_holdings.values()
+        )
+        if total_pos < self.max_pos:
+            order_event.quantity = total_pos - self.max_pos
             return order_event
-        return order_event
 
 
 class MaxInstPosition(GateKeeper):
@@ -112,20 +109,40 @@ class MaxInstPosition(GateKeeper):
         self.max_pos = max_pos
 
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
-        inst_new_pos = order_event.quantity + current_holdings[order_event.symbol].net_pos * (
+        inst_abs_new_pos = abs(current_holdings[order_event.symbol].net_pos + order_event.quantity * (
             1 if order_event.direction == OrderPosition.BUY else -1
-        )
-        if not inst_new_pos < self.max_pos:
-            log_message(f"[Gatekeepers] {order_event.symbol}: inst_new_pos={inst_new_pos}, max_pos={self.max_pos}")
-        return inst_new_pos < self.max_pos
+        ))
+        if not inst_abs_new_pos < self.max_pos:
+            log_message(f"[Gatekeepers] {order_event.symbol}: "
+                        f"inst_abs_new_pos={inst_abs_new_pos}, max_pos={self.max_pos}")
+        return inst_abs_new_pos < self.max_pos
 
-    def _alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
-        if order_event.direction == OrderPosition.BUY:
-            inst_new_pos = order_event.quantity + current_holdings[order_event.symbol].net_pos * (
-                1 if order_event.direction == OrderPosition.BUY else -1
-            )
-            order_event.quantity = min(self.max_pos - inst_new_pos, order_event.quantity)
-            return order_event
+    def alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
+        abs_net_pos = abs(current_holdings[order_event.symbol].net_pos)
+        order_event.quantity = self.max_pos - abs_net_pos
+        return order_event
+
+
+class MaxInstrumentValue(GateKeeper):
+    def __init__(self, max_value: float) -> None:
+        ''' Calculates total mkt value including fill at THAT point in time and accept/reject accordingly '''
+        self.max_value = max_value
+
+    def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
+        inst: Instrument = current_holdings[order_event.symbol]
+        inst_abs_new_value = abs(
+            (inst.net_pos + order_event.quantity * (1 if order_event.direction == OrderPosition.BUY else -1)) *
+            inst.latest_ref_price
+        )
+        if not inst_abs_new_value < self.max_value:
+            log_message(f"[Gatekeepers] {order_event.symbol}: "
+                        f"inst_abs_new_value={inst_abs_new_value}, max_value={self.max_value}")
+        return inst_abs_new_value < self.max_value
+
+    def alter_order(self, order_event: OrderEvent, current_holdings: dict) -> Optional[OrderEvent]:
+        inst: Instrument = current_holdings[order_event.symbol]
+        inst_curr_abs_value = abs(inst.net_pos) * inst.latest_ref_price
+        order_event.quantity = (self.max_value - inst_curr_abs_value) // inst.latest_ref_price
         return order_event
 
 
@@ -160,11 +177,17 @@ class MaxPortfolioPercPerInst(GateKeeper):
                 order_event.quantity * (-1 if order_event.direction == OrderPosition.SELL else 1))
             <= (current_holdings["total"] * self.position_percentage) // symbol_signal_px 
         )
-        if not is_within_max_value_per_inst:
-            log_message(
-                f'[Gatekeepers] MaxPortValuePerInst ({order_event.symbol}): '
-                f'MaxValue={current_holdings["total"] * self.position_percentage}, '
-                f'SymValue={symbol_signal_px * order_event.quantity}'
-            )
+        log_message(
+            f'[Gatekeepers] MaxPortValuePerInst ({order_event.symbol}): '
+            f'MaxValue={current_holdings["total"] * self.position_percentage}, '
+            f'SymValue={symbol_signal_px * order_event.quantity}'
+        )
         # current_holdings[order_event.symbol].net_pos
         return is_within_max_value_per_inst
+    
+    def alter_order(self, order_event: OrderEvent, current_holdings: dict):
+        symbol_signal_px = order_event.signal_price
+        inst: Instrument = current_holdings[order_event.symbol]
+        abs_inst_value = abs(inst.net_pos * inst.latest_ref_price)
+        order_event.quantity = (current_holdings["total"] * self.position_percentage - abs_inst_value) // symbol_signal_px
+        return order_event

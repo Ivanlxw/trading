@@ -64,6 +64,17 @@ class Broker(ABC):
 
     def check_gk(self, event: OrderEvent):
         return all(gk.check_gk(event, self.portfolio.current_holdings) for gk in self.gatekeepers)
+    
+    def check_gk_and_alter_order(self, event: OrderEvent):
+        order = event
+        for gk in self.gatekeepers:
+            pass_gk = gk.check_gk(event, self.portfolio.current_holdings)
+            if not pass_gk:
+                order = gk.alter_order(order, self.portfolio.current_holdings)
+                if order is None:
+                    return
+        return order
+
 
 
 """
@@ -119,7 +130,10 @@ class SimulatedBroker(Broker):
     def execute_order(self, event: OrderEvent, event_queue, order_queue) -> bool:
         if event is None:
             return False
-        if event.type == "ORDER" and self.check_gk(event):
+        if event.type == "ORDER":
+            order = self.check_gk_and_alter_order(event)
+            if order is None:
+                return False
             latest_snapshot = self.bars.get_latest_bar(event.symbol)
             if event.order_type == OrderType.LIMIT:
                 if not self._order_expired(latest_snapshot, event):
