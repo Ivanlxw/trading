@@ -2,7 +2,7 @@ from abc import ABCMeta
 from collections import deque
 import os
 
-from sqlalchemy import create_engine
+from backtest.utilities.utils import get_db_engine
 import polars as pl
 
 from trading.event import FillEvent, OrderEvent
@@ -90,18 +90,19 @@ class Instrument(metaclass=ABCMeta):
 class Equity(Instrument):
     def __init__(self, sym):
         super().__init__(sym)
-        conn = create_engine(os.environ["DB_URL"]).connect()
         ## sic code broken because database reset to support ibkr data instead of polygon or other sources.
         ## TODO: find some kind of equity metadata on ibkr and then write to db, reinstate option strategies
-        # equity_metadata_df = pl.read_database(
-        #     f"select * from backtest.equity_metadata where ticker = '{self.symbol}'",
-        #     connection=conn,
-        # )
-        # if equity_metadata_df.is_empty():
-        #     self.sic_code = "9"
-        # else:
-        #     # print(equity_metadata_df)
-        #     self.sic_code = equity_metadata_df["sic_code"][0]
+        # engine = get_db_engine()
+        # with engine.connect() as conn:
+        #     equity_metadata_df = pl.read_database(
+        #         f"select * from backtest.equity_metadata where ticker = '{self.symbol}'",
+        #         connection=conn,
+        #     )
+        #     if equity_metadata_df.is_empty():
+        #         self.sic_code = "9"
+        #     else:
+        #         # print(equity_metadata_df)
+        #         self.sic_code = equity_metadata_df["sic_code"][0]
 
 
 class Option(Instrument):

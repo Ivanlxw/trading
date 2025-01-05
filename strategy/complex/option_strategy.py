@@ -14,7 +14,7 @@ from trading.strategy.statmodels.features import average_deviation, lag_features
 from trading.utilities.enum import OrderPosition, OrderType
 from trading.event import SignalEvent
 from trading.strategy.base import Strategy
-from trading.strategy.fairprice.feature import _ema
+from trading.strategy.fairprice.feature import ema
 from trading.utilities.utils import NY_TIMEZONE
 
 _SELL = OrderPosition.SELL
@@ -83,8 +83,8 @@ class SellStrangle(Strategy):
         mid_px = prev_day_underlying_close
 
         return (
-            mid_px + _ema(negative_change_arr.to_numpy(), 3)[-1],
-            mid_px + _ema(positive_change_arr.to_numpy(), 3)[-1],
+            mid_px + ema(negative_change_arr.to_numpy(), 3)[-1],
+            mid_px + ema(positive_change_arr.to_numpy(), 3)[-1],
         )
 
     def get_option_symbol(self, underlying, expiration_date, contract_type, strike):

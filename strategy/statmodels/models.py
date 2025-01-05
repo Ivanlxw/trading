@@ -1,7 +1,7 @@
 import abc
 import os
 from typing import Tuple
-from backtest.utilities.utils import log_message
+from backtest.utilities.utils import get_db_engine, log_message
 
 import numpy as np
 import polars as pl
@@ -88,7 +88,7 @@ class MLRangePrediction(Strategy, abc.ABC):
             * (1 + valid_preds["max_pred"].ewm_mean(span=8)[-1] / valid_preds["max_pred"].std() / 100),
            base_px 
             * np.exp(max_move)
-            * (1 + valid_preds["min_pred"].ewm_mean(span=8)[-1] / valid_preds["min_pred"].std() / 100),
+            * (1 + valid_preds["min_pred"].ewm_mean(span=8)[-1] / valid_preds["min_pred"].std() / 100)
         )
 
 
@@ -114,8 +114,9 @@ class EquityPrediction(MLRangePrediction):
         self.ONE_DAY_IN_MS = 8.64e7
         self.frequency_in_mins = 60 * 24 if frequency == "day" else int(frequency.replace("minute", ""))
 
-        conn = create_engine(os.environ["DB_URL"].replace("\\", "")).connect()
-        self.equity_metadata_df = pl.read_database("select * from backtest.equity_metadata", connection=conn)
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            self.equity_metadata_df = pl.read_database("select * from backtest.equity_metadata", connection=conn)
 
     def _preprocess_mkt_data(self, inst) -> pl.DataFrame:
         raw_data = super()._preprocess_mkt_data(inst)

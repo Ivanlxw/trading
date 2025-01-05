@@ -44,7 +44,7 @@ class ComplexHighBeta(ComplexStrategyImpl):
                 signals += [
                     SignalEvent(
                         sym,
-                        index_signal.datetime,
+                        index_signal.timestamp,
                         index_signal.order_position,
                         price=price,
                         other_details=f"ComplexHighBeta [{index_sym}]",
@@ -59,7 +59,7 @@ class ComplexHighBeta(ComplexStrategyImpl):
                     signals += [
                         SignalEvent(
                             sym,
-                            index_signal.datetime,
+                            index_signal.timestamp,
                             index_signal.order_position,
                             price=close_prices[-1],
                             other_details=f"ComplexHighBeta [EXITING: {index_sym}]",

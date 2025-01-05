@@ -1,32 +1,13 @@
+from abc import ABCMeta, abstractmethod
+from typing import Callable, Tuple
+
 import numba as nb
 import numpy as np
+from trading.event import MarketEvent
+from trading.portfolio.instrument import Instrument
 
 from trading.strategy import ta
-
-
-class Feature:
-    def __init__(self, fn):
-        self._fn = fn
-
-    def __call__(self, price):
-        """Feature: returns fair_price"""
-        return self._fn(price)
-
-    def __add__(self, other):
-        assert isinstance(other, Feature), "Only can add 1 Feature to another"
-        return Feature(lambda fair_price: self._fn(fair_price) + other._fn(fair_price))
-
-    def __sub__(self, other):
-        assert isinstance(other, Feature), "Only can add 1 Feature to another"
-        return Feature(lambda fair_price: self._fn(fair_price) - other._fn(fair_price))
-
-    def __mul__(self, other):
-        assert isinstance(other, Feature), "Only can add 1 Feature to another"
-        return Feature(lambda fair_price: self._fn(fair_price) * other._fn(fair_price))
-
-    def __truediv__(self, other):
-        assert isinstance(other, Feature), "Only can add 1 Feature to another"
-        return Feature(lambda fair_price: self._fn(fair_price) / other._fn(fair_price))
+from trading.strategy.base import Strategy
 
 
 @nb.njit
@@ -63,14 +44,41 @@ def momentum(arr):
     return arr
 
 
-class FeatureSMA(Feature):
-    def __init__(self, period):
-        super().__init__(lambda data: np.average(data["close"][:-period]))
+class Feature(Strategy, metaclass=ABCMeta):
+    """
+    Calculates fair price based on a custom function
+    Custom function should take in
+        (hist_mkt_data_df, hist_fair_price_df) -> number or tuple of size 2 indicating range
+        - Note that fair_px_df will always be 1 timestep behind mkt_data_df, depending on timeframe
+    """
+
+    @abstractmethod
+    def __init__(self, fn: Callable, margin, description: str):
+        super().__init__(margin=margin, description=description)
+        self._fn = fn
+
+    def _calculate_fair(self, event: MarketEvent, inst: Instrument) -> Tuple:
+        possible_fair_range = self._fn(inst.historical_market_data, inst.historical_fair_px)
+        if isinstance(possible_fair_range, tuple):
+            assert len(possible_fair_range) == 2, "fair_range should be (min, max)"
+            return possible_fair_range
+        return possible_fair_range, possible_fair_range
 
 
-class FeatureEMA(Feature):
-    def __init__(self, period):
-        super().__init__(lambda data: _ema(data["close"], period)[-1])
+class FeatureLit(Feature):
+    def __init__(self, value, margin, description: str):
+        fn = lambda a, b: value
+        super().__init__(fn, margin, description)
+
+
+class FeatureMA(Feature):
+    def __init__(self, margin, timeperiod: int, ma_func: Callable, range_multiplier=1.0, description="EMACross"):
+        def ma(mkt_px, fair_px):
+            TAs = ma_func(mkt_px["close"].to_numpy(), timeperiod)
+            ta_std = np.std(TAs)
+            return TAs[-1] - ta_std * range_multiplier, TAs[-1] + ta_std * range_multiplier
+
+        super().__init__(ma, margin=margin, description=description)
 
 
 class TrendAwareFeatureEMA(Feature):

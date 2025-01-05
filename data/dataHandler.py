@@ -5,7 +5,6 @@ from random import randint
 import pandas as pd
 from abc import ABC, abstractmethod
 from pathlib import Path
-from sqlalchemy import create_engine
 import zmq
 
 
@@ -15,7 +14,7 @@ from backtest.utilities.option_info import (
     get_option_ticker_from_underlying,
 )  # not working on Windows
 
-from backtest.utilities.utils import NY_TIMEZONE, get_datetime_from_ms, get_ms_from_datetime, log_message
+from backtest.utilities.utils import NY_TIMEZONE, get_datetime_from_ms, get_db_engine, get_ms_from_datetime, log_message
 from trading.event import MarketEvent
 
 FREQUENCY_TYPES = ["1minute", "5minute", "15minute", "30minute", "60minute", "day"]
@@ -103,10 +102,15 @@ class DBDataHandler(DataHandler):
         self.continue_backtest = True
         self.latest_symbol_data = dict((s, []) for s in self.symbol_list)   # data store, just latest
         
-        start_ts_rand = get_ms_from_datetime(datetime(randint(2018, 2020), randint(1, 12), randint(1, 20)))
-        self.start_ts = data_config.get('startTs', start_ts_rand)
-        self.end_ts = self.start_ts + (randint(220, 850) * ONE_DAY_IN_MS)
-        self.eng = create_engine(os.environ["DB_URL"])
+        self.start_ts = get_ms_from_datetime(
+            datetime.strptime(data_config["startDateTime"][:17], '%Y%m%d %H:%M:%S')
+        ) if "startDateTime" in data_config else get_ms_from_datetime(
+            datetime(randint(2018, 2020), randint(1, 12), randint(1, 20))
+        )
+        self.end_ts = get_ms_from_datetime(
+            datetime.strptime(data_config["endDateTime"][:17], '%Y%m%d %H:%M:%S')
+        ) if "endDateTime" in data_config else (self.start_ts + (randint(220, 850) * ONE_DAY_IN_MS))
+        self.eng = get_db_engine()
         self._convert_raw_files()
     
     def get_latest_bar(self, symbol):

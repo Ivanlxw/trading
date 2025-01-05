@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
 
 from backtest.performance import create_sharpe_ratio, create_drawdowns
 from backtest.utilities.ibkr._base import IBClient
@@ -46,6 +45,7 @@ class Portfolio(object, metaclass=ABCMeta):
         self.order_type = order_type
         self.rebalance = rebalance
         self.load_portfolio_details = load_portfolio_details
+        self.ib_client = None
 
     def Initialize(self, symbol_list, metadata_info):
         self.symbol_list = symbol_list
@@ -60,19 +60,21 @@ class Portfolio(object, metaclass=ABCMeta):
             self._setup_holdings_from_json(ABSOLUTE_BT_DATA_DIR / f"portfolio/cur_holdings/{self.portfolio_name}.json")
         assert isinstance(self.current_holdings, dict)
         self.all_holdings = self.construct_all_holdings()
+        UPDATE_WITH_IBKR = False
+        if UPDATE_WITH_IBKR:
+            self.update_from_ibkr(False)
     
     def update_from_ibkr(self, live: bool):
-            eng = create_engine(os.environ["DB_URL"])
-            
             # get data
-            c = IBClient(eng, live)
+            if self.ib_client is None:
+                self.ib_client = IBClient(live)
             acc_id = os.environ[("IBKR_USERID" if live else "IBKR_PAPER_USERID")]
-            c.reqAccountUpdates(True, acc_id)
-            time.sleep(1)
-            ibkr_portfolio_detail = c.portfolio_detail.copy()
-            c.reqAccountUpdates(False, acc_id)
-            c.api_thread.join(timeout=5)
-            log_message(ibkr_portfolio_detail)
+            self.ib_client.reqAccountUpdates(True, acc_id)
+            time.sleep(2)
+            ibkr_portfolio_detail = self.ib_client.portfolio_detail.copy()
+            self.ib_client.reqAccountUpdates(False, acc_id)
+            self.ib_client.api_thread.join(timeout=5)
+            print("updatE_from_ibkr: ", ibkr_portfolio_detail)
             
             self.current_holdings = dict()
             for k, v in ibkr_portfolio_detail.items():
@@ -231,8 +233,9 @@ class Portfolio(object, metaclass=ABCMeta):
             self.current_holdings[event.order_event.symbol].update_from_fill(
                 fill_dir * event.order_event.quantity, event.order_event.trade_price
             )
+            # print("current_holdings at FILL: ", self.current_holdings)
             self.current_holdings["commission"] += event.commission
-            self.current_holdings["cash"] -= cash + event.commission
+            self.current_holdings["cash"] -= cash + event.commission    # hit error: cash is not a key in current_holdings
             if live:
                 self.write_curr_holdings()
 

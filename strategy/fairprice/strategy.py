@@ -52,7 +52,7 @@ class FairPriceStrategy(Strategy):
                     )
                 )
             sig = self._calculate_signal(ohlcv)
-            signals += (sig if sig is not None else [])
+            signals += sig if sig is not None else []
         return signals
 
     def _calculate_signal(self, bars) -> List[SignalEvent]:
