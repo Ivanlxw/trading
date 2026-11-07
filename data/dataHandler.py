@@ -8,7 +8,6 @@ from pathlib import Path
 import zmq
 
 
-from Data.source.base.DataGetter import OHLC_COLUMNS
 from backtest.utilities.option_info import (
     get_option_metadata_info,
     get_option_ticker_from_underlying,
@@ -17,6 +16,7 @@ from backtest.utilities.option_info import (
 from backtest.utilities.utils import NY_TIMEZONE, get_datetime_from_ms, get_db_engine, get_ms_from_datetime, log_message
 from trading.event import MarketEvent
 
+OHLC_COLUMNS = ["open", "high", "low", "close", "volume"]
 FREQUENCY_TYPES = ["1minute", "5minute", "15minute", "30minute", "60minute", "day"]
 
 
