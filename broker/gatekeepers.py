@@ -1,7 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from math import fabs
 from typing import Optional, OrderedDict
-from alpaca_trade_api.entity import Order
 from backtest.utilities.utils import log_message
 from trading.data.dataHandler import DataHandler
 
