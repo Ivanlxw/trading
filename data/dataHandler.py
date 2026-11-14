@@ -131,11 +131,13 @@ class DBDataHandler(DataHandler):
         ts_end_sql = "" if self.end_ts is None else f"AND timestamp <= {self.end_ts}"
         ts_start_sql = "" if self.start_ts is None else f"AND timestamp >= {self.start_ts}"
         df = pd.read_sql(f"""
-            SELECT * FROM ibkr.market_data_bars_uniq
+            SELECT DISTINCT ON (timestamp) *
+            FROM ibkr.market_data_bars
             WHERE frequency = '{self.frequency}'
             AND symbol = '{s}'
             {ts_start_sql}
             {ts_end_sql}
+            ORDER BY timestamp, id DESC
         """, self.eng)
         return (s, df.drop_duplicates())
     
