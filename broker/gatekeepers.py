@@ -75,6 +75,9 @@ class EnoughCash(GateKeeper):
 
     def check_gk(self, order_event: OrderEvent, current_holdings: dict) -> bool:
         order_value = fabs(order_event.quantity * order_event.signal_price)
+        # a SELL that reduces/closes an existing long frees cash; never block it
+        if order_event.direction == OrderPosition.SELL and order_event.quantity <= current_holdings[order_event.symbol].net_pos:
+            return True
         if (order_event.direction == OrderPosition.BUY and current_holdings["cash"] > order_value) or (
             order_event.direction == OrderPosition.SELL and current_holdings["total"] > order_value
         ):
